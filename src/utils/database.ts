@@ -2,7 +2,7 @@ import axios from "axios"
 import { GiteeConfig } from "./database.config"
 import FormData from "form-data";
 
-const {owner, repo, access_token, branch} = GiteeConfig;
+const { owner, repo, access_token, branch } = GiteeConfig;
 
 interface TableInfo {
   name: string

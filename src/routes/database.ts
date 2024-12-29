@@ -39,4 +39,9 @@ dataRouter.get('/v1/addFile', async (req, res) => {
   res.end();
 });
 
+
+dataRouter.get('/v1/download', async (req, res) => {
+  res.send().end();
+});
+
 export default Router().use('/data', dataRouter);
