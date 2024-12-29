@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import dataRouter from './database';
 
 const indexRouter = Router().get('/', (req, res) => {
   const data = { title: 'hello sirus!' };
@@ -11,4 +12,4 @@ const apiRouter = Router().get('/v1', (req, res) => {
   });
 });
 
-export default [indexRouter, apiRouter];
+export default [indexRouter, apiRouter, dataRouter];
