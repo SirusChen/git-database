@@ -40,7 +40,8 @@ dataRouter.get('/v1/addFile', async (req, res) => {
 });
 
 
-dataRouter.get('/v1/download', async (req, res) => {
+dataRouter.post('/v1/download', async (req, res) => {
+  console.log(req.body);
   res.send().end();
 });
 

@@ -10,6 +10,8 @@ app.set('view engine', 'ejs');
 
 app.use('/static', express.static(path.resolve('src', 'static')));
 
+app.use(express.json())
+
 routes.forEach((route) => {
   app.use('/', route);
 })
