@@ -35,7 +35,7 @@
     function getArticleInfo() {
         return getNodeList('article[data-testid=tweet]').map((node) => {
             const node1 = node.querySelector('[data-testid=tweetText]')
-            const node2 = node.querySelectorAll('[data-testid=tweetPhoto]')
+            const node2 = node.querySelectorAll('[data-testid=tweetPhoto][aria-label=Image]')
             const node3 = node.querySelector('[data-testid=videoComponent]')
             // 计算 id
             const a = node.querySelector('a[href*=status]')
@@ -43,11 +43,13 @@
             const id = `${match[1]}_${match[2]}`
             // 计算 text
             const text = node1 ? node1.innerText : ''
+            // 计算 post time
+            const createTime = node.querySelector('time')?.dateTime ?? ''
             // 计算 photo
             const photoList = []
             if (node2 && !node3) {
                 // 有视频的就没有图片
-                const imgList = getNodeList('img[alt=Image]', node).map((img) => {
+                const imgList = getNodeList('img[src*=media]', node).map((img) => {
                     return img.src
                 })
                 photoList.push(...imgList)
@@ -61,13 +63,14 @@
                 id,
                 text,
                 photoList,
+                createTime,
             };
 
             return nodeInfo
         })
     }
 
-    const storageKey = 'sirusbookmarks'
+    const storageKey = 'sirusbookmarks1'
     const workingMap = getStorageMap(storageKey)
     const scrollLength = 2000;
     console.log('init', workingMap);
@@ -81,15 +84,18 @@
         return new Promise((resolve) => {
             let nextPosition = scrollLength;
             const infoList = getArticleInfo()
+            let hasNew = false; // 是否有新 item
             for (let i = 0, len = infoList.length; i < len; i++) {
                 const info = infoList[i]
                 // 入库
                 if (!workingMap.has(info.id)) {
+                    hasNew = true
                     if (info.isValid) {
                         workingMap.set(info.id, {
                             id: info.id,
                             text: info.text,
                             photoList: info.photoList,
+                            createTime: info.createTime,
                         })
                     } else {
                         // 未录入并且并可用，回头再次加载看能不能行
@@ -100,9 +106,13 @@
             console.log(workingMap);
             setStorageMap(storageKey, workingMap)
             window.scrollTo(0, document.documentElement.scrollTop + nextPosition)
-            setTimeout(() => {
+            if (hasNew) {
+                setTimeout(() => {
+                    resolve()
+                }, 1000)
+            } else {
                 resolve()
-            }, 1000)
+            }
         })
     }
 
