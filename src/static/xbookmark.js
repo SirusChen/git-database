@@ -35,7 +35,7 @@
     function getArticleInfo() {
         return getNodeList('article[data-testid=tweet]').map((node) => {
             const node1 = node.querySelector('[data-testid=tweetText]')
-            const node2 = node.querySelectorAll('[data-testid=tweetPhoto][aria-label=Image]')
+            const node2 = node.querySelectorAll('[data-testid=tweetPhoto][aria-label]')
             const node3 = node.querySelector('[data-testid=videoComponent]')
             // 计算 id
             const a = node.querySelector('a[href*=status]')
@@ -84,12 +84,10 @@
         return new Promise((resolve) => {
             let nextPosition = scrollLength;
             const infoList = getArticleInfo()
-            let hasNew = false; // 是否有新 item
             for (let i = 0, len = infoList.length; i < len; i++) {
                 const info = infoList[i]
                 // 入库
                 if (!workingMap.has(info.id)) {
-                    hasNew = true
                     if (info.isValid) {
                         workingMap.set(info.id, {
                             id: info.id,
@@ -106,13 +104,9 @@
             console.log(workingMap);
             setStorageMap(storageKey, workingMap)
             window.scrollTo(0, document.documentElement.scrollTop + nextPosition)
-            if (hasNew) {
-                setTimeout(() => {
-                    resolve()
-                }, 1000)
-            } else {
+            setTimeout(() => {
                 resolve()
-            }
+            }, 1000)
         })
     }
 
@@ -122,5 +116,7 @@
         }
     }
 
-    main()
+    setTimeout(() => {
+        main()
+    }, 2000)
 })();

@@ -23,7 +23,8 @@ export class Database {
   tableFile: TableFile | undefined
   constructor(tableName: string) {
     this.tableName = tableName
-    // this.getDBInfo();
+    this.getDBInfo();
+    this.getDBFile();
   }
   /** 加载 db info */
   async getDBInfo() {
@@ -39,7 +40,8 @@ export class Database {
       this.tableInfo = resp.data;
       if (resp.data.content) {
         try {
-          this.tableFile = JSON.parse(atob(resp.data.content));
+          // git 转码的时候好像用的不是 utf-8 导致 atob 后中文乱码
+          // this.tableFile = JSON.parse(atob(resp.data.content));
         } catch (e) {
           console.warn('getDBInfo parse conten error!', e);
         }
