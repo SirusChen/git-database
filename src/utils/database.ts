@@ -23,9 +23,18 @@ export class Database {
   tableFile: TableFile | undefined
   constructor(tableName: string) {
     this.tableName = tableName
-    this.getDBInfo();
-    this.getDBFile();
+    // this.getDBInfo();
+    // this.getDBFile();
   }
+  /** 取文件夹下的文件列表 */
+  /**
+   * 从完整列表中转存到日期分表
+   * * 一定要是日期吗 - 不一定，但是最常用的查询条件是时间，因此用时间
+   * * 用 id 的优势 - 因为 id 是随机的，因此分表的量是随机的，能均匀分表。但是按照顺序查询就比较不方便
+   */
+  /** 从完整列表中输出主键 Set */
+  /** 取文件夹下的文件列表 */
+  /** 取文件夹下的文件列表 */
   /** 加载 db info */
   async getDBInfo() {
     const resp = await axios.get(
