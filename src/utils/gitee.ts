@@ -3,8 +3,9 @@
  */
 
 import axios, { AxiosRequestConfig } from 'axios';
-import { GiteeConfig } from './database.config';
 import FormData from "form-data";
+import { GiteeConfig } from './database.config';
+import { GiteeFile } from './typing';
 
 export class Gitee {
   private owner: string;
@@ -53,13 +54,34 @@ export class Gitee {
   /**
    * 新增文件
    */
-  addFile(base64: string, filePath: string) {
+  addFile(filePath: string, base64: string): Promise<{
+    content: GiteeFile;
+  }> {
     const data = new FormData();
     data.append('access_token', this.access_token);
     data.append('content', base64);
     data.append('message', `add file in ${new Date()}`);
     return this.request(
       'post',
+      `https://gitee.com/api/v5/repos/${this.owner}/${this.repo}/contents/${filePath}`,
+      {
+        data,
+        headers: data.getHeaders(),
+      }
+    )
+  }
+
+  /**
+   * 更新文件
+   */
+  updateFile(filePath: string, base64: string, sha: string) {
+    const data = new FormData();
+    data.append('access_token', this.access_token);
+    data.append('content', base64);
+    data.append('sha', sha);
+    data.append('message', `update file in ${new Date()}`);
+    return this.request(
+      'put',
       `https://gitee.com/api/v5/repos/${this.owner}/${this.repo}/contents/${filePath}`,
       {
         data,
@@ -76,11 +98,18 @@ async function main() {
     GiteeConfig.access_token,
   );
 
-  const dataList = await gitee.getFileContent('xbookmark/xbookmark1');
-  for (let i = 0; i < 10; i++) {
-    const data = dataList[i];
-    console.log(data.full_text);
-  }
+  // const dataList = await gitee.getFileContent('xbookmark/xbookmark1');
+  // for (let i = 0; i < 10; i++) {
+  //   const data = dataList[i];
+  //   console.log(data.full_text);
+  // }
+
+  const data = await gitee.updateFile(
+    'W3thOjEyM31d',
+    'test-img.png',
+    '8a7ce350d751e696becf012889bcfc20d1b2b18f'
+  );
+  console.log(data);
 }
 
 // main().catch(console.error);

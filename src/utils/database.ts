@@ -2,25 +2,34 @@ import axios from "axios"
 import { GiteeConfig } from "./database.config"
 import FormData from "form-data";
 import { Gitee } from "./gitee";
+import { BaseData, GiteeFile, TableInfo, TableInfoFileDefaultData, TableInfoFileName, XBookmarkData } from "./typing";
 
 const { owner, repo, access_token, branch } = GiteeConfig;
 
-// interface TableInfo {
-//   name: string
-//   content: string
-//   sha: string
-//   /** 文件 raw 地址 */
-//   download_url: string
-// }
+/**
+ * 检查是否有 TableInfoFile
+ */
+function findTableInfoFile(list: GiteeFile[]) {
+  for (let i = 0, len = list.length; i < len; i++) {
+    const file = list[i];
+    if (file.name === TableInfoFileName) {
+      return file;
+    }
+  }
+  return;
+}
 
-// interface TableFile {
-//   updateTime?: number,
-//   data: any[];
-// }
+/**
+ * id 换取 key
+ */
+function getID2Key(id: string, num: number = 1): string {
+  return id.slice(-1 * num);
+}
 
 export class Database {
   tableName: string;
   gitee: Gitee;
+  tableInfoFile: GiteeFile | undefined;
   constructor(tableName: string) {
     this.tableName = tableName;
     this.gitee = new Gitee(owner, repo, access_token);
@@ -30,12 +39,72 @@ export class Database {
    * * 建立必要的数据信息
    */
   async connect() {
-    const fileList = await this.gitee.getFileList(this.tableName);
+    const gitee = this.gitee;
+    const fileList = await gitee.getFileList(this.tableName);
     // 验证基础文件是否齐全
-    // table 初始化内容 + id 映射内容
-    // id 分块信息
+    let tableInfoFile = findTableInfoFile(fileList);
+    if (!tableInfoFile) {
+      // 初始化 table
+      tableInfoFile = await this.buildColumnMap('id');
+    }
+    this.tableInfoFile = tableInfoFile;
   }
 
+  /**
+   * 根据 id 切分数据
+   * * 从总文件中分块存储
+   * * 从零开始建立 TableInfoFile
+   */
+  async buildColumnMap(columnKey: 'id') {
+    const gitee = this.gitee;
+    // 1. 取出所有数据
+    const dataList = await gitee.getFileContent<XBookmarkData[]>('xbookmark/xbookmark1');
+    // 2. 根据 columnKey 分块
+    const column2map: Record<string, XBookmarkData[]> = {}
+    for (let i = 0, len = dataList.length; i < len; i++) {
+      const data = dataList[i];
+      const key = getID2Key(data[columnKey]);
+      if (!column2map[key]) {
+        column2map[key] = [data];
+      } else {
+        column2map[key].push(data);
+      }
+    }
+    // 3. 保存 columnKey 文件
+    const fileMap: Record<string, GiteeFile> = {};
+    const _column2map: {
+      [column: string]: BaseData[];
+    } = {};
+    for (const [key, list] of Object.entries(column2map)) {
+      const fileName = `${columnKey}-${key}`;
+      const { content } = await gitee.addFile(
+        `${this.tableName}/${fileName}`,
+        Buffer.from(JSON.stringify(list)).toString('base64')
+      );
+      fileMap[fileName] = {
+        ...content,
+        // data: list
+      };
+      _column2map[fileName] = list.map<BaseData>(item => {
+        return { id: item.id }
+      });
+    }
+    // 4. 保存 TableInfoFile
+    const TableInfoFile: TableInfo['data'] = {
+      ...TableInfoFileDefaultData,
+      column2map: _column2map,
+    }
+    const { content } = await gitee.addFile(
+      `${this.tableName}/${TableInfoFileName}`,
+      Buffer.from(JSON.stringify(TableInfoFile)).toString('base64')
+    );
+
+    console.log(content);
+    return {
+      ...content,
+      data: TableInfoFile
+    };
+  }
 
 
 
@@ -139,3 +208,12 @@ export class Database {
   //   }
   // }
 }
+
+async function main() {
+  const database = new Database('xbookmark');
+  await database.buildColumnMap('id');
+}
+
+main().catch(error => {
+  console.error('Error in main:', error);
+});
