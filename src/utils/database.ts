@@ -26,10 +26,25 @@ function getID2Key(id: string, num: number = 1): string {
   return id.slice(-1 * num);
 }
 
+/**
+ * id 换取 key
+ */
+function getID2FileName(options: {
+  columnKey: string;
+  key?: string;
+  id?: string;
+}): string {
+  if (options.key) {
+    return `${options.columnKey}-${options.key}`;
+  }
+  return `${options.columnKey}-${options.id}`;
+}
+
 export class Database {
   tableName: string;
   gitee: Gitee;
   tableInfoFile: GiteeFile | undefined;
+  tableInfoData: TableInfo['data'] | undefined;
   constructor(tableName: string) {
     this.tableName = tableName;
     this.gitee = new Gitee(owner, repo, access_token);
@@ -48,6 +63,28 @@ export class Database {
       tableInfoFile = await this.buildColumnMap('id');
     }
     this.tableInfoFile = tableInfoFile;
+    // 加载 TableInfoFile 数据
+    this.tableInfoData = await gitee.getFileContent<TableInfo['data']>(
+      this.tableInfoFile.path,
+    );
+  }
+
+  /**
+   * 查询 columnKey 对应的数据
+   */
+  async selectIDColumn(columnKey: string, ids: string | string[]): Promise<BaseData[]> {
+    if (!this.tableInfoData) {
+      return [];
+    }
+    if (typeof ids === 'string') {
+      ids = [ids];
+    }
+    const { column2map } = this.tableInfoData;
+    for (let i = 0, len = ids.length; i < len; i++) {
+      const id = ids[i];
+      const key = getID2Key(id);
+      column2map[key]
+    }
   }
 
   /**
@@ -76,7 +113,10 @@ export class Database {
       [column: string]: BaseData[];
     } = {};
     for (const [key, list] of Object.entries(column2map)) {
-      const fileName = `${columnKey}-${key}`;
+      const fileName = getID2FileName({
+        columnKey,
+        key,
+      });
       const { content } = await gitee.addFile(
         `${this.tableName}/${fileName}`,
         Buffer.from(JSON.stringify(list)).toString('base64')
@@ -98,8 +138,6 @@ export class Database {
       `${this.tableName}/${TableInfoFileName}`,
       Buffer.from(JSON.stringify(TableInfoFile)).toString('base64')
     );
-
-    console.log(content);
     return {
       ...content,
       data: TableInfoFile
@@ -211,7 +249,9 @@ export class Database {
 
 async function main() {
   const database = new Database('xbookmark');
-  await database.buildColumnMap('id');
+  // await database.buildColumnMap('id');
+  await database.connect();
+  console.log(database.tableInfoData);
 }
 
 main().catch(error => {
