@@ -109,9 +109,9 @@ export class Database {
     }
     // 3. 保存 columnKey 文件
     const fileMap: Record<string, GiteeFile> = {};
-    const _column2map: {
-      [column: string]: BaseData[];
-    } = {};
+    const _column2map: TableInfo['data']['column2map'] = {
+      [columnKey]: {},
+    };
     for (const [key, list] of Object.entries(column2map)) {
       const fileName = getID2FileName({
         columnKey,
@@ -125,9 +125,7 @@ export class Database {
         ...content,
         // data: list
       };
-      _column2map[fileName] = list.map<BaseData>(item => {
-        return { id: item.id }
-      });
+      _column2map[columnKey][key] = list.map(item => item[columnKey]);
     }
     // 4. 保存 TableInfoFile
     const TableInfoFile: TableInfo['data'] = {

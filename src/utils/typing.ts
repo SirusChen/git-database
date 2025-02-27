@@ -25,10 +25,10 @@ export interface TableInfo extends GiteeFile {
     numColumns: ColumnInfo[];
     /**
      * 对上述列的映射
-     * column - key - id list
+     * columnKey - key - id list
      */
     column2map: {
-      [column: string]: BaseData[];
+      [columnKey: string]: Record<string, string[]>;
     }
   }
 }
