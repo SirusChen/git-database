@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "DevTools Console+",
+  "version": "0.1.0",
+  "description": "Custom DevTools console panel.",
+  "devtools_page": "./devtools.html"
+}
