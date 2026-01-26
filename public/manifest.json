@@ -3,5 +3,10 @@
   "name": "DevTools Console+",
   "version": "0.1.0",
   "description": "Custom DevTools console panel.",
-  "devtools_page": "./devtools.html"
+  "devtools_page": "./devtools.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": ["<all_urls>"],
+  "permissions": ["scripting"]
 }

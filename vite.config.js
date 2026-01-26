@@ -26,6 +26,8 @@ function copyPublicFiles() {
   }
 }
 
+let watchPublicFiles = null;
+
 export default defineConfig(({ command }) => {
   const isDev = command === "serve";
   
@@ -45,24 +47,39 @@ export default defineConfig(({ command }) => {
         name: "copy-public",
         buildStart() {
           copyPublicFiles();
+          
+          // 在 watch 模式下监听 public 目录变化
+          if (!watchPublicFiles) {
+            const publicDir = resolve(__dirname, "public");
+            if (existsSync(publicDir)) {
+              watchPublicFiles = watch(publicDir, { recursive: true }, (eventType, filename) => {
+                if (filename) {
+                  console.log(`[watch] ${eventType}: ${filename}`);
+                  copyPublicFiles();
+                }
+              });
+              console.log("✓ Watching public directory for changes");
+            }
+          }
         },
         buildEnd() {
           // 确保在构建结束后再次复制，避免被覆盖
           copyPublicFiles();
         },
-        configureServer() {
-          // 开发模式下，启动时先构建一次
-          return () => {
-            // 监听 public 目录变化
-            const publicDir = resolve(__dirname, "public");
-            if (existsSync(publicDir)) {
-              watch(publicDir, { recursive: true }, (eventType, filename) => {
-                if (filename) {
-                  copyPublicFiles();
-                }
-              });
-            }
-          };
+        configureServer(server) {
+          // 开发服务器模式下，启动时先复制一次
+          copyPublicFiles();
+          
+          // 监听 public 目录变化
+          const publicDir = resolve(__dirname, "public");
+          if (existsSync(publicDir)) {
+            watch(publicDir, { recursive: true }, (eventType, filename) => {
+              if (filename) {
+                console.log(`[watch] ${eventType}: ${filename}`);
+                copyPublicFiles();
+              }
+            });
+          }
         },
       },
     ],
