@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+# Overview
+
+每次实现新的功能，在控制台输出一个 tag，用作验证产物是否更新。
+当前业务的ID：version，内容为8位uuid
