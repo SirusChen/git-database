@@ -1,8 +1,10 @@
+const tabId = chrome.devtools.inspectedWindow.tabId;
+
 chrome.devtools.panels.create(
   "Console+",
   null,
-  "panel.html",
+  `panel.html?tabId=${tabId}`,
   (panel) => {
-    console.log("Panel created");
+    console.log("Panel created for tab:", tabId);
   }
 );
