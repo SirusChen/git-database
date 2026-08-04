@@ -1,5 +1,9 @@
-node_modules
-.DS_Store
+# 依赖（pnpm 安装产物）
+node_modules/
 
-# output dir
-dist
+# 会话密钥，含 auth_token / ct0，切勿提交
+cookies.json
+
+# 系统/临时
+.DS_Store
+*.log

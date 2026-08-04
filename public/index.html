@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X 书签浏览器</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#15202b; color:#e7e9ea;
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; }
+  header { position:sticky; top:0; z-index:20; background:#15202b; border-bottom:1px solid #38444d;
+    padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  header h1 { font-size:17px; margin:0 12px 0 0; }
+  .total { color:#8b98a5; font-size:13px; }
+  .spacer { flex:1; }
+  input[type=date] { background:#192734; color:#e7e9ea; border:1px solid #38444d; border-radius:8px; padding:7px 10px; font-size:13px; }
+  button { background:#1d9bf0; color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  button.ghost { background:#192734; color:#e7e9ea; border:1px solid #38444d; }
+  button:disabled { opacity:.5; cursor:default; }
+  #status { font-size:12px; color:#8b98a5; min-width:120px; }
+  main { max-width:720px; margin:0 auto; padding:16px 14px 80px; }
+  .card { background:#192734; border:1px solid #38444d; border-radius:14px; padding:14px 16px; margin-bottom:14px; transition:box-shadow .4s; }
+  .card.flash { box-shadow:0 0 0 3px #1d9bf0, 0 0 24px #1d9bf0; }
+  .head { display:flex; align-items:center; gap:10px; }
+  .av { width:42px; height:42px; border-radius:50%; object-fit:cover; background:#22303c; flex:none; }
+  .who { flex:1; min-width:0; }
+  .name { font-weight:700; font-size:15px; }
+  .handle { color:#8b98a5; font-weight:400; margin-left:6px; }
+  .meta-line { font-size:12px; color:#8b98a5; margin-top:2px; }
+  .text { margin:10px 0; font-size:15px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+  .lnk { color:#1d9bf0; text-decoration:none; }
+  .lnk:hover { text-decoration:underline; }
+  .imgs { display:grid; gap:6px; margin:10px 0; border-radius:12px; overflow:hidden; }
+  .imgs-1 { grid-template-columns:1fr; }
+  .imgs-2 { grid-template-columns:1fr 1fr; }
+  .imgs-3 { grid-template-columns:1fr 1fr; } .imgs-3 a:first-child { grid-column:1 / span 2; }
+  .imgs-4 { grid-template-columns:1fr 1fr; }
+  .imgs a { display:block; overflow:hidden; background:#22303c; }
+  .imgs img { width:100%; max-height:440px; object-fit:cover; display:block; border-radius:8px; }
+  .stats { font-size:13px; color:#8b98a5; margin-top:8px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  .stats .plink { color:#1d9bf0; text-decoration:none; margin-left:auto; }
+  #sentinel { height:1px; }
+  .end { text-align:center; color:#8b98a5; font-size:13px; padding:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>X 书签浏览器</h1>
+  <span class="total" id="total">加载中…</span>
+  <div class="spacer"></div>
+  <input type="date" id="jumpDate" title="跳转到该日期附近的收藏">
+  <button class="ghost" id="jumpBtn">跳转</button>
+  <button class="ghost" id="syncBtn">同步书签</button>
+  <button id="topBtn">回到顶部</button>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="feed"></div>
+  <div id="sentinel"></div>
+  <div class="end" id="end"></div>
+</main>
+
+<script>
+const feed = document.getElementById('feed');
+const sentinel = document.getElementById('sentinel');
+const endEl = document.getElementById('end');
+const statusEl = document.getElementById('status');
+const totalEl = document.getElementById('total');
+
+let cursor = 0;
+let loading = false;
+let loadedCount = 0;
+let reachedEnd = false;
+
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const escAttr = esc;
+const fmtNum = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+const fmtDate = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?iso:d.toLocaleString(); };
+
+function linkify(text, entities) {
+  let html = esc(text);
+  html = html.replace(/https?:\/\/t\.co\/\w+/g, m =>
+    `<a class="lnk" href="${escAttr(m)}" target="_blank" rel="noopener">${esc(m)}</a>`);
+  html = html.replace(/(^|[\s(])#(\w+)/g, (m,p,h) =>
+    `${p}<a class="lnk" href="https://x.com/hashtag/${escAttr(h)}" target="_blank" rel="noopener">#${esc(h)}</a>`);
+  html = html.replace(/(^|[\s(])@(\w+)/g, (m,p,u) =>
+    `${p}<a class="lnk" href="https://x.com/${escAttr(u)}" target="_blank" rel="noopener">@${esc(u)}</a>`);
+  return html.replace(/\n/g, '<br>');
+}
+
+function cardHTML(p, offset) {
+  const a = p.author || {};
+  const avatar = a.avatar
+    ? `<img class="av" src="${esc(a.avatar)}" alt="" onerror="this.style.visibility='hidden'">`
+    : `<div class="av" style="background:#22303c"></div>`;
+  const permalink = (a.screen_name && p.id) ? `https://x.com/${esc(a.screen_name)}/status/${esc(p.id)}` : null;
+  let imgs = '';
+  if (p.media && p.media.length) {
+    const n = Math.min(p.media.length, 4);
+    imgs = `<div class="imgs imgs-${n}">` + p.media.slice(0,4).map(m => {
+      const ar = (m.width && m.height) ? `style="aspect-ratio:${m.width}/${m.height}"` : '';
+      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" ${ar}><img loading="lazy" src="${esc(m.thumb || m.url)}" alt="media" onerror="this.style.opacity=.25"></a>`;
+    }).join('') + `</div>`;
+  }
+  const link = permalink ? `<a class="plink" href="${permalink}" target="_blank" rel="noopener">在 X 上查看 ↗</a>` : '';
+  return `<article class="card" data-offset="${offset}">
+    <div class="head">${avatar}<div class="who">
+      <div class="name">${esc(a.name || '')}${a.screen_name ? `<span class="handle">${esc(a.screen_name)}</span>` : ''}</div>
+      <div class="meta-line">收藏于 ${fmtDate(p.bookmarked_at)} · 发布 ${fmtDate(p.created_at)}</div>
+    </div></div>
+    <div class="text">${linkify(p.text || '', p.entities)}</div>
+    ${imgs}
+    <div class="stats">👍 ${fmtNum(p.stats && p.stats.likes)} &nbsp; 🔁 ${fmtNum(p.stats && p.stats.retweets)} &nbsp; 💬 ${fmtNum(p.stats && p.stats.replies)} &nbsp; 🔖 ${fmtNum(p.stats && p.stats.bookmarks)} &nbsp; 👁 ${fmtNum(p.stats && p.stats.views)} ${link}</div>
+  </article>`;
+}
+
+async function loadMore() {
+  if (loading || reachedEnd) return;
+  loading = true;
+  statusEl.textContent = '加载中…';
+  try {
+    const r = await fetch(`/api/bookmarks?cursor=${cursor}&limit=20`);
+    const data = await r.json();
+    const items = data.items || [];
+    items.forEach((p, i) => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = cardHTML(p, loadedCount + i);
+      feed.appendChild(wrap.firstElementChild);
+    });
+    loadedCount += items.length;
+    cursor = data.nextCursor;
+    if (cursor == null) { reachedEnd = true; endEl.textContent = '— 没有更多书签了 —'; }
+    totalEl.textContent = `共 ${data.total} 条`;
+  } catch (e) {
+    statusEl.textContent = '加载失败: ' + e.message;
+  } finally {
+    loading = false;
+    statusEl.textContent = '';
+  }
+}
+
+async function ensureLoaded(targetOffset) {
+  let guard = 0;
+  while (loadedCount <= targetOffset && !reachedEnd && !loading && guard < 200) {
+    await loadMore();
+    guard++;
+  }
+}
+
+function reset() {
+  feed.innerHTML = '';
+  cursor = 0; loadedCount = 0; reachedEnd = false; loading = false;
+  endEl.textContent = '';
+  loadMore();
+}
+
+// 无限滚动
+const io = new IntersectionObserver(entries => {
+  if (entries.some(e => e.isIntersecting)) loadMore();
+}, { rootMargin: '600px' });
+io.observe(sentinel);
+
+// 时间跳转
+document.getElementById('jumpBtn').onclick = async () => {
+  const v = document.getElementById('jumpDate').value;
+  if (!v) { statusEl.textContent = '请选择日期'; return; }
+  statusEl.textContent = '定位中…';
+  try {
+    const r = await fetch(`/api/bookmarks/find?at=${encodeURIComponent(v)}`);
+    const data = await r.json();
+    if (data.offset == null) { statusEl.textContent = '无匹配'; return; }
+    await ensureLoaded(data.offset);
+    const el = feed.querySelector(`[data-offset="${data.offset}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 1600);
+      statusEl.textContent = `已跳转到第 ${data.offset + 1} 条（收藏于 ${fmtDate(data.post && data.post.bookmarked_at)}）`;
+    }
+  } catch (e) { statusEl.textContent = '跳转失败: ' + e.message; }
+};
+
+// 同步
+document.getElementById('syncBtn').onclick = async () => {
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true; statusEl.textContent = '正在从 x.com 抓取…（需调试 Edge 在线）';
+  try {
+    const r = await fetch('/api/sync', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      statusEl.textContent = `同步完成：新增 ${data.added} / 本次见 ${data.seen} / 共 ${data.total}`;
+      reset();
+    } else {
+      statusEl.textContent = '同步失败: ' + (data.error || '未知');
+    }
+  } catch (e) { statusEl.textContent = '同步失败: ' + e.message; }
+  finally { btn.disabled = false; }
+};
+
+document.getElementById('topBtn').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+reset();
+</script>
+</body>
+</html>

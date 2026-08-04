@@ -1,0 +1,394 @@
+{
+  "__typename": "Tweet",
+  "cashtag_attachments": [],
+  "core": {
+    "user_results": {
+      "result": {
+        "__typename": "User",
+        "action_counts": {
+          "favorites_count": 7835
+        },
+        "affiliates_highlighted_label": {},
+        "avatar": {
+          "image_url": "https://pbs.twimg.com/profile_images/2065522001217830913/lnPoUI5G_normal.jpg"
+        },
+        "banner": {
+          "image_url": "https://pbs.twimg.com/profile_banners/1769763527827337216/1765729500"
+        },
+        "core": {
+          "created_at": "Mon Mar 18 16:31:33 +0000 2024",
+          "name": "Ayano",
+          "screen_name": "AyanoCanvas"
+        },
+        "dm_permissions": {
+          "can_dm": true
+        },
+        "follow_request_sent": false,
+        "has_graduated_access": true,
+        "id": "VXNlcjoxNzY5NzYzNTI3ODI3MzM3MjE2",
+        "is_blue_verified": true,
+        "location": {
+          "location": ""
+        },
+        "media_permissions": {
+          "can_media_tag": true
+        },
+        "notifications_settings": {
+          "notifications_enabled": false
+        },
+        "parody_commentary_fan_label": "None",
+        "pinned_items": {},
+        "possibly_sensitive": false,
+        "privacy": {
+          "protected": false
+        },
+        "professional": {
+          "category": [],
+          "professional_type": "Creator",
+          "rest_id": "1769993848875356303"
+        },
+        "profile_bio": {
+          "description": "Daily waifu illustrations!\n\n🌶️Patreon for full sets 🔞 ⬇️ \nhttps://t.co/lZKstDDaCs\n\n🔥Previews: @AyanoNSFW",
+          "entities": {
+            "description": {
+              "urls": [
+                {
+                  "display_url": "patreon.com/AyanoSama",
+                  "expanded_url": "http://patreon.com/AyanoSama",
+                  "indices": [
+                    58,
+                    81
+                  ],
+                  "url": "https://t.co/lZKstDDaCs"
+                }
+              ]
+            },
+            "url": {
+              "urls": [
+                {
+                  "display_url": "solo.to/ayanocanvas",
+                  "expanded_url": "https://solo.to/ayanocanvas",
+                  "indices": [
+                    0,
+                    23
+                  ],
+                  "url": "https://t.co/ICNBmHnX2F"
+                }
+              ]
+            }
+          }
+        },
+        "profile_description_language": "en",
+        "profile_image_shape": "Circle",
+        "profile_metadata": {
+          "profile_interstitial_type": ""
+        },
+        "profile_translation": {
+          "translator_type": "none"
+        },
+        "relationship_counts": {
+          "followers": 23429,
+          "following": 265
+        },
+        "relationship_perspectives": {
+          "blocked_by": false,
+          "blocking": false,
+          "followed_by": false,
+          "following": false,
+          "live_following": false,
+          "muting": false
+        },
+        "rest_id": "1769763527827337216",
+        "super_follow_eligible": false,
+        "super_followed_by": false,
+        "super_following": false,
+        "tweet_counts": {
+          "media_tweets": 411,
+          "tweets": 1719
+        },
+        "verification": {
+          "verified": false
+        },
+        "website": {
+          "url": "https://t.co/ICNBmHnX2F"
+        }
+      }
+    }
+  },
+  "edit_control": {
+    "edit_tweet_ids": [
+      "2081212923729633508"
+    ],
+    "editable_until_msecs": "1785038402000",
+    "edits_remaining": "5",
+    "is_edit_eligible": true
+  },
+  "grok_analysis_button": true,
+  "grok_annotations": {
+    "is_image_editable_by_grok": true
+  },
+  "grok_translated_post_with_availability": {
+    "is_available": false
+  },
+  "is_translatable": true,
+  "legacy": {
+    "bookmark_count": 1579,
+    "bookmarked": true,
+    "conversation_id_str": "2081212923729633508",
+    "created_at": "Sun Jul 26 03:00:02 +0000 2026",
+    "display_text_range": [
+      0,
+      85
+    ],
+    "entities": {
+      "hashtags": [
+        {
+          "indices": [
+            26,
+            42
+          ],
+          "text": "ZenlessZoneZero"
+        },
+        {
+          "indices": [
+            43,
+            53
+          ],
+          "text": "ゼンレスゾーンゼロ"
+        },
+        {
+          "indices": [
+            54,
+            59
+          ],
+          "text": "ゼンゼロ"
+        },
+        {
+          "indices": [
+            60,
+            67
+          ],
+          "text": "zzzero"
+        }
+      ],
+      "media": [
+        {
+          "allow_download_status": {
+            "allow_download": true
+          },
+          "display_url": "pic.x.com/LaXSi7jfWx",
+          "expanded_url": "https://x.com/AyanoCanvas/status/2081212923729633508/photo/1",
+          "ext_media_availability": {
+            "status": "Available"
+          },
+          "features": {
+            "large": {
+              "faces": []
+            },
+            "medium": {
+              "faces": []
+            },
+            "orig": {
+              "faces": []
+            },
+            "small": {
+              "faces": []
+            }
+          },
+          "id_str": "2079671139668815872",
+          "indices": [
+            86,
+            109
+          ],
+          "media_key": "3_2079671139668815872",
+          "media_results": {
+            "result": {
+              "media_key": "3_2079671139668815872"
+            }
+          },
+          "media_url_https": "https://pbs.twimg.com/media/HNx54gmXcAAmESk.jpg",
+          "original_info": {
+            "focus_rects": [
+              {
+                "h": 932,
+                "w": 1664,
+                "x": 0,
+                "y": 202
+              },
+              {
+                "h": 1664,
+                "w": 1664,
+                "x": 0,
+                "y": 0
+              },
+              {
+                "h": 1897,
+                "w": 1664,
+                "x": 0,
+                "y": 0
+              },
+              {
+                "h": 2432,
+                "w": 1216,
+                "x": 60,
+                "y": 0
+              },
+              {
+                "h": 2432,
+                "w": 1664,
+                "x": 0,
+                "y": 0
+              }
+            ],
+            "height": 2432,
+            "width": 1664
+          },
+          "sizes": {
+            "large": {
+              "h": 2048,
+              "resize": "fit",
+              "w": 1401
+            },
+            "medium": {
+              "h": 1200,
+              "resize": "fit",
+              "w": 821
+            },
+            "small": {
+              "h": 680,
+              "resize": "fit",
+              "w": 465
+            },
+            "thumb": {
+              "h": 150,
+              "resize": "crop",
+              "w": 150
+            }
+          },
+          "type": "photo",
+          "url": "https://t.co/LaXSi7jfWx"
+        }
+      ]
+    },
+    "extended_entities": {
+      "media": [
+        {
+          "allow_download_status": {
+            "allow_download": true
+          },
+          "display_url": "pic.x.com/LaXSi7jfWx",
+          "expanded_url": "https://x.com/AyanoCanvas/status/2081212923729633508/photo/1",
+          "ext_media_availability": {
+            "status": "Available"
+          },
+          "features": {
+            "large": {
+              "faces": []
+            },
+            "medium": {
+              "faces": []
+            },
+            "orig": {
+              "faces": []
+            },
+            "small": {
+              "faces": []
+            }
+          },
+          "id_str": "2079671139668815872",
+          "indices": [
+            86,
+            109
+          ],
+          "media_key": "3_2079671139668815872",
+          "media_results": {
+            "result": {
+              "media_key": "3_2079671139668815872"
+            }
+          },
+          "media_url_https": "https://pbs.twimg.com/media/HNx54gmXcAAmESk.jpg",
+          "original_info": {
+            "focus_rects": [
+              {
+                "h": 932,
+                "w": 1664,
+                "x": 0,
+                "y": 202
+              },
+              {
+                "h": 1664,
+                "w": 1664,
+                "x": 0,
+                "y": 0
+              },
+              {
+                "h": 1897,
+                "w": 1664,
+                "x": 0,
+                "y": 0
+              },
+              {
+                "h": 2432,
+                "w": 1216,
+                "x": 60,
+                "y": 0
+              },
+              {
+                "h": 2432,
+                "w": 1664,
+                "x": 0,
+                "y": 0
+              }
+            ],
+            "height": 2432,
+            "width": 1664
+          },
+          "sizes": {
+            "large": {
+              "h": 2048,
+              "resize": "fit",
+              "w": 1401
+            },
+            "medium": {
+              "h": 1200,
+              "resize": "fit",
+              "w": 821
+            },
+            "small": {
+              "h": 680,
+              "resize": "fit",
+              "w": 465
+            },
+            "thumb": {
+              "h": 150,
+              "resize": "crop",
+              "w": 150
+            }
+          },
+          "type": "photo",
+          "url": "https://t.co/LaXSi7jfWx"
+        }
+      ]
+    },
+    "favorite_count": 9453,
+    "favorited": false,
+    "full_text": "Remielle Dan | レミエール・ダン 🩷\n#ZenlessZoneZero #ゼンレスゾーンゼロ #ゼンゼロ #zzzero\n\nSFW illustration https://t.co/LaXSi7jfWx",
+    "id_str": "2081212923729633508",
+    "is_quote_status": false,
+    "lang": "ja",
+    "possibly_sensitive": false,
+    "possibly_sensitive_editable": true,
+    "quote_count": 2,
+    "reply_count": 7,
+    "retweet_count": 345,
+    "retweeted": false,
+    "user_id_str": "1769763527827337216"
+  },
+  "rest_id": "2081212923729633508",
+  "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>",
+  "unmention_data": {},
+  "views": {
+    "count": "76415",
+    "state": "EnabledWithCount"
+  }
+}
