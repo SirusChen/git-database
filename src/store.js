@@ -1,13 +1,15 @@
 /**
- * store.js — 书签文件库
+ * store.js — 模块 2：书签文件数据库
  *  - data/bookmarks.jsonl : 每行一条规范化帖子（append-only，按 id 去重）
  *  - data/meta.json       : 计数 / 时间范围 / 最近同步
- * 内存维护一个按 bookmarked_at 倒序的数组 + id->post 索引，启动即从 jsonl 载入。
+ * 内存维护一个按 created_at 倒序的数组 + id->post 索引，启动即从 jsonl 载入。
+ * 对外提供：分页(page)、时间定位(findByTime)、统计(getMeta)、修复(compact)。
  */
 const fs = require('fs');
 const path = require('path');
 
-const DIR = path.join(__dirname, 'data');
+const ROOT = path.resolve(__dirname, '..');
+const DIR = path.join(ROOT, 'data');
 const JSONL = path.join(DIR, 'bookmarks.jsonl');
 const META = path.join(DIR, 'meta.json');
 
@@ -19,7 +21,15 @@ function ensure() {
 
 let cache = null;
 
-function cmp(a, b) { return (b.bookmarked_at || '').localeCompare(a.bookmarked_at || ''); }
+// 排序：以帖子真实发布时间 created_at 倒序为主（honest，数据分散）；
+// 同时间回退 ingested_at 倒序，再回退 id，保证稳定且不依赖不可靠的「收藏时间」。
+function cmp(a, b) {
+  const r = (b.created_at || '').localeCompare(a.created_at || '');
+  if (r !== 0) return r;
+  const r2 = (b.ingested_at || '').localeCompare(a.ingested_at || '');
+  if (r2 !== 0) return r2;
+  return (b.id || '').localeCompare(a.id || '');
+}
 
 function load() {
   ensure();
@@ -50,11 +60,11 @@ function append(post) {
 
 function writeMeta() {
   const c = load();
-  const times = c.items.map(p => p.bookmarked_at).filter(Boolean).sort();
+  const times = c.items.map(p => p.created_at).filter(Boolean).sort();
   const meta = {
     count: c.items.length,
-    minBookmarkedAt: times[0] || null,
-    maxBookmarkedAt: times[times.length - 1] || null,
+    minCreatedAt: times[0] || null,
+    maxCreatedAt: times[times.length - 1] || null,
     lastSync: new Date().toISOString()
   };
   fs.writeFileSync(META, JSON.stringify(meta, null, 2));
@@ -77,16 +87,22 @@ function page(cursor = 0, limit = 20) {
 }
 
 /**
- * 时间跳转定位：在「按 bookmarked_at 倒序」的列表中，
- * 找到第一条约等于/早于 atISO 的帖子（即离选定日期最近的、不晚于该日的书签），
- * 返回其 offset，前端据此滚动并高亮。
- * 若所有帖子都晚于 atISO（选定日期很新），返回 offset=0（列表顶部）。
+ * 时间跳转定位：在列表中找到「时间字段 field 不晚于 atISO」且最接近该时刻的帖子
+ * （即 field 最大且 <= atISO 的那条），返回其 offset，前端据此滚动并高亮。
+ *  - field 默认 'created_at'（帖子真实发布时间，数据可靠、分散，是跳转的主要依据）。
+ *    'ingested_at' 为「入库时间」，仅作兜底排序/审计用。
+ *  - 若没有任何帖子 <= atISO（选定日期早于全部帖子），返回 offset=0（列表顶部）。
  */
-function findByTime(atISO) {
+function findByTime(atISO, field = 'created_at') {
   const c = load();
+  let best = null, bestOffset = -1;
   for (let i = 0; i < c.items.length; i++) {
-    if (c.items[i].bookmarked_at <= atISO) return { offset: i, post: c.items[i] };
+    const v = c.items[i][field];
+    if (v && v <= atISO) {
+      if (best === null || v > best) { best = v; bestOffset = i; }
+    }
   }
+  if (bestOffset >= 0) return { offset: bestOffset, post: c.items[bestOffset] };
   return { offset: 0, post: c.items[0] || null };
 }
 

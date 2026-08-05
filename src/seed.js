@@ -1,55 +1,23 @@
 /**
- * seed.js — 用「真实抓取到的样本 + 结构化合成数据」填充 data/bookmarks.jsonl，
+ * seed.js — 开发联调用：用「真实抓取到的样本 + 结构化合成数据」填充 data/bookmarks.jsonl，
  * 以便在没有外网代理时也能端到端验证 store / API / 前端（分页 + 时间跳转 + 无限滚动）。
  *
  * 说明：本文件仅用于验证流水线。真实数据请通过 POST /api/sync 从 x.com 抓取
  * （需 Clash 代理/TUN 在线）。seed 帖子 id 以 "seed_" 前缀，不会与真实数字 id 冲突。
+ * 真实样本同样复用 normalize.js，保证与实时抓取落库的形状完全一致。
  */
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
+const { normalize } = require('./normalize');
 
-const REAL = path.join(__dirname, '_raw_tweet.json');
+const ROOT = path.resolve(__dirname, '..');
+const REAL = path.join(ROOT, '_raw_tweet.json');
 
 function realRecord() {
   try {
     const tr = JSON.parse(fs.readFileSync(REAL, 'utf8'));
-    const t = tr.tweet || tr;
-    const leg = t.legacy || {};
-    const ur = t.core && t.core.user_results && t.core.user_results.result;
-    const uc = ur ? (ur.core || ur.legacy) : null;
-    const mediaRaw = (leg.extended_entities && leg.extended_entities.media) || [];
-    const media = mediaRaw.map(m => ({
-      type: m.type, url: m.media_url_https,
-      width: (m.original_info || {}).width, height: (m.original_info || {}).height,
-      thumb: m.media_url_https + ':thumb'
-    }));
-    const ent = leg.entities || {};
-    return {
-      id: t.rest_id || leg.id_str,
-      created_at: new Date(leg.created_at).toISOString(),
-      author: {
-        id: leg.user_id_str,
-        screen_name: uc && uc.screen_name, name: uc && uc.name,
-        avatar: (uc && uc.avatar_image_url) || (ur && ur.legacy && ur.legacy.profile_image_url_https) || null
-      },
-      text: leg.full_text,
-      lang: leg.lang, source: tr.source || t.source,
-      sensitive: !!leg.possibly_sensitive,
-      conversation_id: leg.conversation_id_str, is_quote: !!leg.is_quote_status,
-      media,
-      entities: {
-        hashtags: (ent.hashtags || []).map(h => h.text),
-        mentions: (ent.user_mentions || []).map(u => u.screen_name),
-        urls: (ent.urls || []).map(u => ({ expanded: u.expanded_url, display: u.display_url }))
-      },
-      stats: {
-        likes: Number(leg.favorite_count) || 0, retweets: Number(leg.retweet_count) || 0,
-        replies: Number(leg.reply_count) || 0, quotes: Number(leg.quote_count) || 0,
-        bookmarks: Number(leg.bookmark_count) || 0,
-        views: (t.views && t.views.count != null) ? Number(t.views.count) : null
-      }
-    };
+    return normalize(tr);   // 复用数据契约，与 fetcher 保持一致
   } catch (e) { console.error('realRecord failed:', e.message); return null; }
 }
 

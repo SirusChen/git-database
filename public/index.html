@@ -20,7 +20,8 @@
   button:disabled { opacity:.5; cursor:default; }
   #status { font-size:12px; color:#8b98a5; min-width:120px; }
   main { max-width:720px; margin:0 auto; padding:16px 14px 80px; }
-  .card { background:#192734; border:1px solid #38444d; border-radius:14px; padding:14px 16px; margin-bottom:14px; transition:box-shadow .4s; }
+  /* content-visibility:auto 让视口外的卡片跳过渲染（保留滚动高度），1000+ 帖子也不卡 */
+  .card { background:#192734; border:1px solid #38444d; border-radius:14px; padding:14px 16px; margin-bottom:14px; transition:box-shadow .4s; content-visibility:auto; contain-intrinsic-size:auto 600px; }
   .card.flash { box-shadow:0 0 0 3px #1d9bf0, 0 0 24px #1d9bf0; }
   .head { display:flex; align-items:center; gap:10px; }
   .av { width:42px; height:42px; border-radius:50%; object-fit:cover; background:#22303c; flex:none; }
@@ -31,13 +32,25 @@
   .text { margin:10px 0; font-size:15px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
   .lnk { color:#1d9bf0; text-decoration:none; }
   .lnk:hover { text-decoration:underline; }
-  .imgs { display:grid; gap:6px; margin:10px 0; border-radius:12px; overflow:hidden; }
+  .imgs { display:grid; gap:6px; margin:10px 0; border-radius:12px; overflow:hidden; align-items:start; }
   .imgs-1 { grid-template-columns:1fr; }
   .imgs-2 { grid-template-columns:1fr 1fr; }
   .imgs-3 { grid-template-columns:1fr 1fr; } .imgs-3 a:first-child { grid-column:1 / span 2; }
   .imgs-4 { grid-template-columns:1fr 1fr; }
-  .imgs a { display:block; overflow:hidden; background:#22303c; }
-  .imgs img { width:100%; max-height:440px; object-fit:cover; display:block; border-radius:8px; }
+  .imgs a { display:block; overflow:hidden; background:#22303c; border-radius:8px; cursor:zoom-in; transition:filter .15s; }
+  .imgs a:hover { filter:brightness(1.06); }
+  /* 灯箱：点击图片后在同一页面展示 :large 原比例大图 */
+  #lightbox { position:fixed; inset:0; z-index:100; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.94); padding:24px; }
+  #lightbox.open { display:flex; }
+  #lightbox img { max-width:100%; max-height:100%; object-fit:contain; border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,.6); transition:opacity .2s; }
+  .lb-close { position:absolute; top:14px; right:16px; background:rgba(255,255,255,.12); color:#fff; border:none; border-radius:50%; width:40px; height:40px; font-size:18px; cursor:pointer; }
+  .lb-close:hover { background:rgba(255,255,255,.24); }
+  .lb-hint { position:absolute; bottom:16px; left:0; right:0; text-align:center; color:#8b98a5; font-size:12px; }
+  .lb-loading { position:absolute; color:#8b98a5; font-size:13px; }
+  /* 宽高比直接来自帖子原始尺寸：img 用 aspect-ratio 占位（height:auto 既防布局抖动又按真实比例渲染，不裁切） */
+  .imgs img { width:100%; height:auto; display:block; border-radius:8px; background:#22303c; }
+  /* 单图极竖/极横时做个高度上限，避免一屏只够看半张图；用 cover 仅在超限才生效 */
+  .imgs-1 img { max-height:760px; object-fit:cover; }
   .stats { font-size:13px; color:#8b98a5; margin-top:8px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
   .stats .plink { color:#1d9bf0; text-decoration:none; margin-left:auto; }
   #sentinel { height:1px; }
@@ -49,7 +62,7 @@
   <h1>X 书签浏览器</h1>
   <span class="total" id="total">加载中…</span>
   <div class="spacer"></div>
-  <input type="date" id="jumpDate" title="跳转到该日期附近的收藏">
+  <input type="date" id="jumpDate" title="跳转到该日期附近发布的帖子（按发布时间）">
   <button class="ghost" id="jumpBtn">跳转</button>
   <button class="ghost" id="syncBtn">同步书签</button>
   <button id="topBtn">回到顶部</button>
@@ -60,6 +73,13 @@
   <div id="sentinel"></div>
   <div class="end" id="end"></div>
 </main>
+
+<div id="lightbox" aria-hidden="true">
+  <button class="lb-close" id="lbClose" title="关闭">✕</button>
+  <span class="lb-loading" id="lbLoading">加载中…</span>
+  <img id="lbImg" alt="media">
+  <div class="lb-hint">点击空白处或按 Esc 关闭</div>
+</div>
 
 <script>
 const feed = document.getElementById('feed');
@@ -101,8 +121,12 @@ function cardHTML(p, offset) {
   if (p.media && p.media.length) {
     const n = Math.min(p.media.length, 4);
     imgs = `<div class="imgs imgs-${n}">` + p.media.slice(0,4).map(m => {
+      // 从原始地址(m.url, 无后缀)派生：feed 用 :small(更轻量)，点击灯箱用 :large(清晰)
+      const base = (m.url || m.thumb || '').replace(/:\w+$/, '');
+      const feedSrc = base ? base + ':small' : (m.url || m.thumb || '');
+      const fullSrc = base ? base + ':large' : (m.url || m.thumb || '');
       const ar = (m.width && m.height) ? `style="aspect-ratio:${m.width}/${m.height}"` : '';
-      return `<a href="${esc(m.url)}" target="_blank" rel="noopener" ${ar}><img loading="lazy" src="${esc(m.thumb || m.url)}" alt="media" onerror="this.style.opacity=.25"></a>`;
+      return `<a class="imglink" href="#" data-full="${esc(fullSrc)}"><img loading="lazy" src="${esc(feedSrc)}" alt="media" ${ar} onerror="this.style.opacity=.25"></a>`;
     }).join('') + `</div>`;
   }
   const link = permalink ? `<a class="plink" href="${permalink}" target="_blank" rel="noopener">在 X 上查看 ↗</a>` : '';
@@ -163,13 +187,13 @@ const io = new IntersectionObserver(entries => {
 }, { rootMargin: '600px' });
 io.observe(sentinel);
 
-// 时间跳转
+// 时间跳转（按帖子发布时间 created_at，数据真实且分散；bookmarked_at 为入库时间，不宜作跳转基准）
 document.getElementById('jumpBtn').onclick = async () => {
   const v = document.getElementById('jumpDate').value;
   if (!v) { statusEl.textContent = '请选择日期'; return; }
   statusEl.textContent = '定位中…';
   try {
-    const r = await fetch(`/api/bookmarks/find?at=${encodeURIComponent(v)}`);
+    const r = await fetch(`/api/bookmarks/find?at=${encodeURIComponent(v)}&by=created_at`);
     const data = await r.json();
     if (data.offset == null) { statusEl.textContent = '无匹配'; return; }
     await ensureLoaded(data.offset);
@@ -178,7 +202,7 @@ document.getElementById('jumpBtn').onclick = async () => {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('flash');
       setTimeout(() => el.classList.remove('flash'), 1600);
-      statusEl.textContent = `已跳转到第 ${data.offset + 1} 条（收藏于 ${fmtDate(data.post && data.post.bookmarked_at)}）`;
+      statusEl.textContent = `已跳转到第 ${data.offset + 1} 条（发布于 ${fmtDate(data.post && data.post.created_at)}）`;
     }
   } catch (e) { statusEl.textContent = '跳转失败: ' + e.message; }
 };
@@ -201,6 +225,33 @@ document.getElementById('syncBtn').onclick = async () => {
 };
 
 document.getElementById('topBtn').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+// 灯箱：点击帖子内图片，在当前页面展示 :large 原比例大图
+const lightbox = document.getElementById('lightbox');
+const lbImg = document.getElementById('lbImg');
+const lbLoading = document.getElementById('lbLoading');
+function openLightbox(src) {
+  lbImg.style.opacity = 0;
+  lbLoading.style.display = 'block';
+  lbImg.onload = () => { lbLoading.style.display = 'none'; lbImg.style.opacity = 1; };
+  lbImg.src = src;
+  lightbox.classList.add('open');
+  lightbox.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  lightbox.classList.remove('open');
+  lightbox.setAttribute('aria-hidden', 'true');
+  lbImg.src = '';
+  document.body.style.overflow = '';
+}
+feed.addEventListener('click', e => {
+  const a = e.target.closest('.imglink');
+  if (a) { e.preventDefault(); openLightbox(a.dataset.full); }
+});
+lightbox.addEventListener('click', e => { if (e.target !== lbImg) closeLightbox(); });
+document.getElementById('lbClose').addEventListener('click', closeLightbox);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox(); });
 
 reset();
 </script>

@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "本地归档 x.com 书签并提供网页浏览（无限滚动 + 按时间跳转）。零第三方运行时依赖，仅用 Node.js 内置模块。",
-  "main": "server.js",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "serve": "node server.js",
-    "seed": "node seed.js",
-    "sync": "node -e \"require('./fetcher').sync().then(r=>{console.log(JSON.stringify(r,null,2));process.exit(0)}).catch(e=>{console.error('SYNC FAILED:', e.message);process.exit(1)})\""
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "serve": "node src/server.js",
+    "seed": "node src/seed.js",
+    "sync": "node -e \"require('./src/fetcher').sync().then(r=>{console.log(JSON.stringify(r,null,2));process.exit(0)}).catch(e=>{console.error('SYNC FAILED:', e.message);process.exit(1)})\""
   },
   "engines": {
     "node": ">=18"
