@@ -233,4 +233,104 @@ async function sync(opts = {}) {
   return { added, seen, pages, total: meta.count, seq: global.get('seq') };
 }
 
-module.exports = { sync, parseTimeline, buildUrl, buildHeaders, buildCookieHeader };
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/**
+ * 连通性探测 + 首屏读取：只取第一页（cursor=null），不写盘、不清数据。
+ * 返回 { nodeCount, hasBottom }，用于判断代理/上游是否在线、Cookie 是否有效。
+ * 抛错带友好信息，且绝不触碰本地数据。
+ */
+async function probeConnection() {
+  let params, cookies;
+  try { params = JSON.parse(fs.readFileSync(PARAMS_PATH, 'utf8')); }
+  catch (e) { throw new Error('读取 bookmarks_params.json 失败（' + e.message + '）'); }
+  try { cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8')); }
+  catch (e) { throw new Error('读取 cookies.json 失败（' + e.message + '）'); }
+  const ct0c = cookies.find(c => c.name === 'ct0');
+  if (!ct0c) throw new Error('cookies.json 缺少 ct0 字段（Cookie 可能已过期或格式不对）');
+  const cookieHeader = buildCookieHeader(cookies);
+  const proxy = proxyConfig();
+  const { nodes, bottom } = await fetchPage(params, ct0c.value, cookieHeader, proxy, null);
+  return { nodeCount: nodes.length, hasBottom: !!bottom };
+}
+
+/**
+ * 全量重同步（清空本地 → 从头抓到尾 → 按「书签列表顺序」分配 index）。
+ *  - opts.pageDelayMs：每两页 fetch 之间的间隔（默认 60000 = 1 分钟），用于限速/礼貌抓取。
+ *  - opts.maxPages：安全上限（默认 100000，实际由 Bottom 游标耗尽自然停止）。
+ *  - 顺序：先取首屏验证连通性；**只有连通成功才清空本地数据与全局自增计数**，避免清空后无法回填。
+ *  - 全程在内存累积所有帖子（API 返回顺序：首屏=最新收藏，Bottom 游标向后=更早收藏）；
+ *    全部抓完后整体反转（使最旧收藏排到首位），从链尾（页数最大、最旧收藏）起 index=1 自增，
+ *    最后调用 store.replaceAll 一次性低频落盘。**index 严格跟随书签列表顺序，与 created_at 无关。**
+ */
+async function resync(opts = {}) {
+  const pageDelayMs = opts.pageDelayMs != null ? opts.pageDelayMs : 60000;
+  const maxPages = opts.maxPages || 100000;
+
+  let params, cookies;
+  try { params = JSON.parse(fs.readFileSync(PARAMS_PATH, 'utf8')); }
+  catch (e) { throw new Error('读取 bookmarks_params.json 失败（' + e.message + '）：请先准备好抓取参数文件'); }
+  try { cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8')); }
+  catch (e) { throw new Error('读取 cookies.json 失败（' + e.message + '）：请先放置有效的 x.com Cookie（可用 edge-debug-browser 导出）'); }
+  const ct0c = cookies.find(c => c.name === 'ct0');
+  if (!ct0c) throw new Error('cookies.json 缺少 ct0 字段（Cookie 可能已过期或格式不对）');
+  const cookieHeader = buildCookieHeader(cookies);
+  const proxy = proxyConfig();
+
+  // 步骤2/探测：先取首屏（同时验证代理可达 + Cookie 有效）。失败直接抛出，绝不破坏现有数据。
+  let first;
+  try {
+    first = await fetchPage(params, ct0c.value, cookieHeader, proxy, null);
+  } catch (e) {
+    throw new Error('无法开始全量同步（首屏抓取失败，代理/上游可能离线或 Cookie 过期）：' + e.message + ' —— 本地 bookmarks.jsonl 与 .bak 均未被改动。');
+  }
+
+  // 连通正常 → 清空本地书签数据（jsonl + meta）并重置全局自增计数
+  store.clearAll();
+  global.set('seq', 0);
+  global.flush();
+  // 同时按用户要求删除所有 .bak 备份（仅在此刻、确认可回填后才删）
+  for (const f of fs.readdirSync(path.join(ROOT, 'data'))) {
+    if (f === 'bookmarks.jsonl.bak' || f.endsWith('.bak')) {
+      try { fs.unlinkSync(path.join(ROOT, 'data', f)); } catch (_) { /* ignore */ }
+    }
+  }
+
+  // 内存累积所有规范化帖子（按 API 返回顺序，不做任何写盘）
+  const all = [];
+  const pushNodes = (nodes) => {
+    for (const n of nodes) {
+      const p = normalize(n);
+      if (p && p.id) all.push(p);
+    }
+  };
+  pushNodes(first.nodes);
+  let pages = 1, total = first.nodes.length, bottom = first.bottom;
+  console.error(`[resync] page 1 ok, posts=${total}`);
+
+  // 后续页：每页间隔 pageDelayMs，仅累积到内存
+  while (bottom && pages < maxPages) {
+    await sleep(pageDelayMs);
+    const page = await fetchPage(params, ct0c.value, cookieHeader, proxy, bottom);
+    pushNodes(page.nodes);
+    pages++;
+    total += page.nodes.length;
+    bottom = page.bottom;
+    console.error(`[resync] page ${pages} ok, posts so far=${total}`);
+  }
+
+  // 步骤3：index 严格按「书签列表顺序」分配（与 created_at 无关）。
+  // API 顺序为「最新收藏在前、最旧收藏在后」；用户要求最旧的（页数最大、链尾）为 index=1，
+  // 故整体反转使链尾排到首位，自增从 1 开始（旧→新：index 1..N）。
+  all.reverse();
+  for (const p of all) p.index = global.nextId();
+  const written = store.replaceAll(all);   // 单次低频落盘
+  global.flush();
+
+  const meta = store.getMeta();
+  return { mode: 'resync', cleared: true, pages, total, written, seq: global.get('seq') };
+}
+
+module.exports = { sync, resync, probeConnection, parseTimeline, buildUrl, buildHeaders, buildCookieHeader };

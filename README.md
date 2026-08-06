@@ -123,8 +123,11 @@ curl -X POST http://localhost:3000/api/sync
 - 翻页游标：`content.cursorType:"Bottom"` 的 `content.value`
 - 媒体尺寸：`extended_entities.media[].original_info.{width,height}`（用于锁定卡片宽高比，避免加载时跳动）
 - 时间跳转基准：`created_at`（帖子真实发布时间，数据可靠且分散）。
-  > 注：x.com 的 Bookmarks 接口**不返回每条的真实收藏时间**，故库内不存 `bookmarked_at`；排序与时间跳转统一以 `created_at` 为准，`index` 作为稳定序号/兜底排序键。
-- 自增 id（`index`）：由 `src/global.js` 维护的全局计数器（`data/globals.json` 仅存 `{seq}`，低频落盘），`fetcher.sync()` 入库每条新帖前调用 `global.nextId()` 取得，存量数据已通过 `store.backfillIndex()` 一次性补齐。
+  > 注：x.com 的 Bookmarks 接口**不返回每条的真实收藏时间**，故库内不存 `bookmarked_at`；排序与时间跳转统一以 `created_at` 为准，`index` 作为「书签列表顺序」的稳定序号/兜底排序键（**与 created_at 无关**）。
+- 自增 id（`index`）：由 `src/global.js` 维护的全局计数器（`data/globals.json` 仅存 `{seq}`，低频落盘），`global.nextId()` 单调递增赋值。**index 严格跟随书签列表顺序**——API 返回顺序为「最新收藏在前、最旧收藏在后」：
+  - **全量重同步 `fetcher.resync()`**：在内存中按抓取顺序累积全部帖子（首屏=最新收藏，Bottom 游标向后=更早收藏），全部抓完后整体反转使最旧收藏排到首位，自调用 `global.nextId()` 从 1 自增，最后 `store.replaceAll` 一次性低频落盘（最旧收藏 = index 1）。
+  - **增量同步 `fetcher.sync()`**：新抓到的书签依次 `global.nextId()` 取号（最新收藏永远拿到最大 index）。
+  - 因此 `index` 即用户书签列表中的位置序号，与 `created_at`（发布时间）解耦。
 
 ---
 

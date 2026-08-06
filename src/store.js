@@ -118,27 +118,36 @@ function compact() {
   return c.items.length;
 }
 
-/**
- * 给「缺少 index 字段」的帖子批量补一个自增序号（单次批量重写，低频 I/O）。
- * 需要传入 global 模块的 nextId 以统一计数；返回补了多少条。
- * 与 compact 同理，仅在批量操作完成后调用一次。
- */
-function backfillIndex(global) {
-  if (!global || typeof global.nextId !== 'function') throw new Error('backfillIndex 需要 global 模块（提供 nextId）');
-  const c = load();
-  let n = 0;
-  for (const p of c.items) {
-    if (p && p.id != null && p.index == null) {
-      p.index = global.nextId();
-      n++;
-    }
-  }
-  if (n > 0) {
-    const body = c.items.map(p => JSON.stringify(p)).join('\n') + (c.items.length ? '\n' : '');
-    fs.writeFileSync(JSONL, body);
-    writeMeta();
-  }
-  return n;
+// 清空本地书签数据（jsonl + meta）并重置内存缓存。不动 globals.json（自增计数由调用方按需重置）。
+function clearAll() {
+  cache = null;
+  ensure();
+  fs.writeFileSync(JSONL, '');
+  fs.writeFileSync(META, JSON.stringify({ count: 0 }, null, 2));
+  cache = null;
+  return true;
 }
 
-module.exports = { ensure, load, reload, append, has, compact, backfillIndex, getMeta, page, findByTime, JSONL, META };
+/**
+ * 整体替换书签数据（按给定 posts 的顺序原样写入，单次 IO）。
+ * 用于全量重同步末尾：调用方负责传入已去重、已按「书签顺序」排好序的 posts 数组，
+ * 并在其中写好 index 字段；本函数只负责去重 + 一次性落盘 + 刷新 meta。
+ * （index 的顺序由书签列表本身决定，而非 created_at —— 见 fetcher.resync。）
+ */
+function replaceAll(posts) {
+  const map = new Map();
+  const items = [];
+  for (const p of (posts || [])) {
+    if (!p || !p.id) continue;
+    if (map.has(p.id)) continue;
+    map.set(p.id, p);
+    items.push(p);
+  }
+  const body = items.map(p => JSON.stringify(p)).join('\n') + (items.length ? '\n' : '');
+  fs.writeFileSync(JSONL, body);
+  writeMeta();
+  cache = null;   // 下次 load 从新文件重建（按 created_at 倒序供展示），index 字段随帖保留
+  return items.length;
+}
+
+module.exports = { ensure, load, reload, append, has, clearAll, compact, replaceAll, getMeta, page, findByTime, JSONL, META };
