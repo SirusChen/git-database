@@ -103,8 +103,8 @@ curl -X POST http://localhost:3000/api/sync
 ```json
 {
   "id": "推文ID",
+  "index": "自增 id（入库时由 global.nextId() 赋值，全局唯一且单调递增，仅持久化于本文件 bookmarks.jsonl）",
   "created_at": "发布时间 ISO（由 legacy.created_at 转换，时间跳转的真实基准）",
-  "ingested_at": "入库时间 ISO（本次同步时 new Date() 写入，仅作审计/兜底排序）",
   "author": { "id": "作者ID", "screen_name": "@名", "name": "昵称", "avatar": "头像URL（可能缺失）" },
   "text": "正文全文",
   "lang": "ja",
@@ -122,8 +122,9 @@ curl -X POST http://localhost:3000/api/sync
 - 核心：书签列表 `timeline.instructions[].entries[]` → `content.itemContent.tweet_results.result`
 - 翻页游标：`content.cursorType:"Bottom"` 的 `content.value`
 - 媒体尺寸：`extended_entities.media[].original_info.{width,height}`（用于锁定卡片宽高比，避免加载时跳动）
-- 时间跳转基准：`created_at`（帖子真实发布时间，数据可靠且分散）。`ingested_at` 为入库时间，仅供参考。
-  > 注：x.com 的 Bookmarks 接口**不返回每条的真实收藏时间**，故库内不存 `bookmarked_at`；排序与时间跳转统一以 `created_at` 为准。
+- 时间跳转基准：`created_at`（帖子真实发布时间，数据可靠且分散）。
+  > 注：x.com 的 Bookmarks 接口**不返回每条的真实收藏时间**，故库内不存 `bookmarked_at`；排序与时间跳转统一以 `created_at` 为准，`index` 作为稳定序号/兜底排序键。
+- 自增 id（`index`）：由 `src/global.js` 维护的全局计数器（`data/globals.json` 仅存 `{seq}`，低频落盘），`fetcher.sync()` 入库每条新帖前调用 `global.nextId()` 取得，存量数据已通过 `store.backfillIndex()` 一次性补齐。
 
 ---
 
@@ -146,7 +147,7 @@ curl -X POST http://localhost:3000/api/sync
 - **可能需 `x-client-transaction-id`**：x.com 部分接口会校验该头（浏览器自动带，纯 Node 不自带）。若代理恢复后 `/api/sync` 返回 403/特定错误，需在 `fetcher.js` 补一个 transaction-id 生成逻辑（社区有成熟算法），届时可据返回的错误片段补上。
 - **日常浏览不依赖代理**：读本地文件库（`/api/bookmarks`、`/api/bookmarks/find`）与前端渲染都不需要代理，仅图片/视频走 `pbs.twimg.com` CDN（该 CDN 直连可达，无需代理）。
 - **queryId 轮换**：`bookmarks_params.json` 里的 `query_id` 会随 x.com 前端更新而轮换；若同步报 `errors`，需重新从 x.com JS bundle 抓取最新 `queryId`（或参考 x-reader 自动发现）。
-- **不存真实收藏时间**：x.com 的 Bookmarks 接口不返回每条收藏时刻，库内以 `created_at`（发布时间）作为时间跳转与排序基准，`ingested_at` 仅记录入库时刻。
+- **不存真实收藏时间**：x.com 的 Bookmarks 接口不返回每条收藏时刻，库内不存 `bookmarked_at`，统一以 `created_at`（发布时间）作为时间跳转与排序基准；`index` 作为稳定序号。
 - **头像可能缺失**：部分书签节点的作者对象不含头像字段，此时卡片不显示头像。
 - **媒体仅存 URL**：图片/视频以 `pbs.twimg.com` 链接形式保存，浏览时由浏览器直连 CDN 加载，未做本地缓存。
 - **`cookies.json` 含会话密钥**：请妥善保管，不再使用时删除。

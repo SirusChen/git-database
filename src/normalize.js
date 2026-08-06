@@ -6,10 +6,11 @@
  *   - fetcher.js（实时抓取）复用本函数，落库的形状唯一、可控。
  *
  * 输出 schema（每条帖子）：
- *   { id, created_at, ingested_at, author{id,screen_name,name,avatar},
+ *   { id, index, created_at, author{id,screen_name,name,avatar},
  *     text, lang, source, sensitive, conversation_id, is_quote,
  *     media[{type,url,width,height,thumb}], entities{hashtags,mentions,urls},
  *     stats{likes,retweets,replies,quotes,bookmarks,views} }
+ *   - index 由 fetcher 在入库前通过 global.nextId() 赋值（自增 id），作为稳定序号/排序依据。
  *
  * 字段来源说明（基于真实样本）：
  *   - id / created_at : legacy.id_str / legacy.created_at

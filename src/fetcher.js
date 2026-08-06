@@ -8,7 +8,6 @@
  *    从而规避 Node 直连时的 DNS/TLS 限制（域名由代理解析，socks5h 语义）。
  *  - 认证：静态 Bearer + 浏览器导出的 cookies（含 auth_token / ct0）+ x-csrf-token(=ct0)。
  *  - 翻页：bottomCursor → 下一页。每条原始推文经 normalize.js 映射后由 store.append 去重入库。
- *  - ingested_at 写入「真实入库时间」（new Date()），不再伪造 bookmarked_at。
  */
 const https = require('https');
 const http = require('http');
@@ -18,6 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const { normalize } = require('./normalize');
+const global = require('./global');
 
 const ROOT = path.resolve(__dirname, '..');
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
@@ -192,7 +192,6 @@ async function fetchPage(params, ct0, cookieHeader, proxy, cursor) {
 
 /**
  * 抓取并入库（纯 Node，无需浏览器）。
- *  - ingested_at = 真实入库时间（new Date()），不再伪造 bookmarked_at。
  *  - 二次 sync 只会追加新书签（按 id 去重）。
  */
 async function sync(opts = {}) {
@@ -218,16 +217,20 @@ async function sync(opts = {}) {
     for (const tr of nodes) {
       const post = normalize(tr);
       if (!post || !post.id) continue;
-      post.ingested_at = new Date().toISOString();
       seen++;
-      if (store.append(post)) added++;
+      if (!store.has(post.id)) {
+        post.index = global.nextId();                 // 自增序号，仅落在 bookmarks.jsonl
+        store.append(post);
+        added++;
+      }
     }
     pages++;
     cursor = bottom;
   } while (cursor && pages < maxPages);
 
+  global.flush();   // 批量抓取完成后低频落盘一次（更新自增计数）
   const meta = store.getMeta();
-  return { added, seen, pages, total: meta.count };
+  return { added, seen, pages, total: meta.count, seq: global.get('seq') };
 }
 
 module.exports = { sync, parseTimeline, buildUrl, buildHeaders, buildCookieHeader };

@@ -7,10 +7,12 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin:0; background:#15202b; color:#e7e9ea;
-    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; }
+  html, body { height: 100%; }
+  body { margin:0; background:#15202b; color:#e7e9ea; overflow:hidden;
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex; flex-direction:column; }
   header { position:sticky; top:0; z-index:20; background:#15202b; border-bottom:1px solid #38444d;
-    padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:none; }
   header h1 { font-size:17px; margin:0 12px 0 0; }
   .total { color:#8b98a5; font-size:13px; }
   .spacer { flex:1; }
@@ -19,9 +21,14 @@
   button.ghost { background:#192734; color:#e7e9ea; border:1px solid #38444d; }
   button:disabled { opacity:.5; cursor:default; }
   #status { font-size:12px; color:#8b98a5; min-width:120px; }
-  main { max-width:720px; margin:0 auto; padding:16px 14px 80px; }
-  /* content-visibility:auto 让视口外的卡片跳过渲染（保留滚动高度），1000+ 帖子也不卡 */
-  .card { background:#192734; border:1px solid #38444d; border-radius:14px; padding:14px 16px; margin-bottom:14px; transition:box-shadow .4s; content-visibility:auto; contain-intrinsic-size:auto 600px; }
+
+  /* 虚拟滚动容器：固定高度、接管原生滚动；内部由 VirtualList 用 layer 撑出全量滚动条 */
+  #viewport { flex:1; overflow-y:auto; overflow-x:hidden; padding:16px 14px 80px; position:relative; }
+  .vl-layer { max-width:720px; margin:0 auto; }
+  /* vrow = 虚拟列表的一条行容器(绝对定位 + 间距)，卡片本身无外边距，间距放在这里 */
+  .vrow { padding-bottom:14px; }
+
+  .card { background:#192734; border:1px solid #38444d; border-radius:14px; padding:14px 16px; }
   .card.flash { box-shadow:0 0 0 3px #1d9bf0, 0 0 24px #1d9bf0; }
   .head { display:flex; align-items:center; gap:10px; }
   .av { width:42px; height:42px; border-radius:50%; object-fit:cover; background:#22303c; flex:none; }
@@ -53,8 +60,6 @@
   .imgs-1 img { max-height:760px; object-fit:cover; }
   .stats { font-size:13px; color:#8b98a5; margin-top:8px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
   .stats .plink { color:#1d9bf0; text-decoration:none; margin-left:auto; }
-  #sentinel { height:1px; }
-  .end { text-align:center; color:#8b98a5; font-size:13px; padding:20px; }
 </style>
 </head>
 <body>
@@ -68,11 +73,9 @@
   <button id="topBtn">回到顶部</button>
   <span id="status"></span>
 </header>
-<main>
-  <div id="feed"></div>
-  <div id="sentinel"></div>
-  <div class="end" id="end"></div>
-</main>
+
+<!-- 虚拟滚动视口：VirtualList 会把卡片渲染进这里 -->
+<div id="viewport"></div>
 
 <div id="lightbox" aria-hidden="true">
   <button class="lb-close" id="lbClose" title="关闭">✕</button>
@@ -81,17 +84,12 @@
   <div class="lb-hint">点击空白处或按 Esc 关闭</div>
 </div>
 
+<!-- 独立虚拟滚动模块 -->
+<script src="virtual-scroll.js"></script>
 <script>
-const feed = document.getElementById('feed');
-const sentinel = document.getElementById('sentinel');
-const endEl = document.getElementById('end');
+const viewport = document.getElementById('viewport');
 const statusEl = document.getElementById('status');
 const totalEl = document.getElementById('total');
-
-let cursor = 0;
-let loading = false;
-let loadedCount = 0;
-let reachedEnd = false;
 
 const esc = s => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -111,7 +109,8 @@ function linkify(text, entities) {
   return html.replace(/\n/g, '<br>');
 }
 
-function cardHTML(p, offset) {
+// 单条卡片 HTML（元信息用真实的 created_at）
+function cardHTML(p) {
   const a = p.author || {};
   const avatar = a.avatar
     ? `<img class="av" src="${esc(a.avatar)}" alt="" onerror="this.style.visibility='hidden'">`
@@ -130,10 +129,10 @@ function cardHTML(p, offset) {
     }).join('') + `</div>`;
   }
   const link = permalink ? `<a class="plink" href="${permalink}" target="_blank" rel="noopener">在 X 上查看 ↗</a>` : '';
-  return `<article class="card" data-offset="${offset}">
+  return `<article class="card" data-id="${esc(p.id)}">
     <div class="head">${avatar}<div class="who">
       <div class="name">${esc(a.name || '')}${a.screen_name ? `<span class="handle">${esc(a.screen_name)}</span>` : ''}</div>
-      <div class="meta-line">收藏于 ${fmtDate(p.bookmarked_at)} · 发布 ${fmtDate(p.created_at)}</div>
+      <div class="meta-line">发布 ${fmtDate(p.created_at)}</div>
     </div></div>
     <div class="text">${linkify(p.text || '', p.entities)}</div>
     ${imgs}
@@ -141,53 +140,87 @@ function cardHTML(p, offset) {
   </article>`;
 }
 
-async function loadMore() {
-  if (loading || reachedEnd) return;
-  loading = true;
-  statusEl.textContent = '加载中…';
+// ---- 虚拟滚动实例 ----
+let allItems = [];
+let flashId = null;
+
+const vlist = new VirtualList({
+  viewport,
+  overscan: 10,            // 视口上下各保留 10 条缓冲
+  estimateHeight: 360,     // 未实测前的估算高度
+  getKey: (p) => p.id,     // 按帖子 id 复用 DOM
+  renderItem: (p, i) => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = cardHTML(p, i);
+    const el = wrap.firstElementChild;
+    if (flashId && p.id === flashId) el.classList.add('flash');
+    return el;
+  },
+  onRangeChange: (start, end, total) => {
+    // 可见区间变化(可用于懒加载/埋点等)，此处仅调试态展示
+    statusEl.dataset.range = start + '-' + end + '/' + total;
+  }
+});
+
+// ---- 视口顶部帖子持久化(localStorage) ----
+// 记录视口中的第一个帖子(顶部可见项)，离开/滚动时缓存；初始化时从这里恢复。
+const LS_TOP = 'xbook:topPost';
+function topPostState() {
+  const info = vlist.getScrollInfo();
+  const post = vlist.getItem(info.startIndex);
+  return post ? { id: post.id, index: info.startIndex } : null;
+}
+function saveTopPost() {
+  const s = topPostState();
+  if (!s) return;
+  try { localStorage.setItem(LS_TOP, JSON.stringify(s)); } catch (e) {}
+}
+function restoreTop() {
+  let raw;
+  try { raw = localStorage.getItem(LS_TOP); } catch (e) { return; }
+  if (!raw) return;
+  let saved;
+  try { saved = JSON.parse(raw); } catch (e) { return; }
+  // 优先按 id 定位(数据重排后仍准确)，回退到 index
+  let idx = (saved.id != null) ? allItems.findIndex(p => p.id === saved.id) : -1;
+  if (idx < 0 && saved.index != null && saved.index >= 0 && saved.index < allItems.length) idx = saved.index;
+  if (idx >= 0) vlist.scrollToIndex(idx, 'start');
+}
+// 滚动时节流保存(顶部帖子变化才写，避免每次像素滚动都写)
+let _saveTimer = 0;
+viewport.addEventListener('scroll', () => {
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => { _saveTimer = 0; saveTopPost(); }, 400);
+}, { passive: true });
+// 离开页面/隐藏标签页时确保落盘
+window.addEventListener('pagehide', saveTopPost);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTopPost(); });
+
+// ---- 一次性加载全部书签(虚拟滚动需要全量数据来计算滚动条) ----
+async function loadAll() {
+  allItems = [];
+  let cursor = 0, pages = 0;
+  statusEl.textContent = '加载全部书签…';
   try {
-    const r = await fetch(`/api/bookmarks?cursor=${cursor}&limit=20`);
-    const data = await r.json();
-    const items = data.items || [];
-    items.forEach((p, i) => {
-      const wrap = document.createElement('div');
-      wrap.innerHTML = cardHTML(p, loadedCount + i);
-      feed.appendChild(wrap.firstElementChild);
-    });
-    loadedCount += items.length;
-    cursor = data.nextCursor;
-    if (cursor == null) { reachedEnd = true; endEl.textContent = '— 没有更多书签了 —'; }
-    totalEl.textContent = `共 ${data.total} 条`;
+    while (true) {
+      const r = await fetch(`/api/bookmarks?cursor=${cursor}&limit=100`);
+      const d = await r.json();
+      const items = d.items || [];
+      for (const it of items) allItems.push(it);
+      totalEl.textContent = `共 ${d.total} 条`;
+      if (d.nextCursor == null) break;
+      cursor = d.nextCursor;
+      if (++pages > 500) break;
+    }
+    vlist.setItems(allItems);
+    restoreTop();           // 从 localStorage 恢复上次视口顶部帖子
+    statusEl.textContent = '';
   } catch (e) {
     statusEl.textContent = '加载失败: ' + e.message;
-  } finally {
-    loading = false;
-    statusEl.textContent = '';
   }
 }
 
-async function ensureLoaded(targetOffset) {
-  let guard = 0;
-  while (loadedCount <= targetOffset && !reachedEnd && !loading && guard < 200) {
-    await loadMore();
-    guard++;
-  }
-}
-
-function reset() {
-  feed.innerHTML = '';
-  cursor = 0; loadedCount = 0; reachedEnd = false; loading = false;
-  endEl.textContent = '';
-  loadMore();
-}
-
-// 无限滚动
-const io = new IntersectionObserver(entries => {
-  if (entries.some(e => e.isIntersecting)) loadMore();
-}, { rootMargin: '600px' });
-io.observe(sentinel);
-
-// 时间跳转（按帖子发布时间 created_at，数据真实且分散；bookmarked_at 为入库时间，不宜作跳转基准）
+// ---- 时间跳转(按帖子真实发布时间 created_at) ----
 document.getElementById('jumpBtn').onclick = async () => {
   const v = document.getElementById('jumpDate').value;
   if (!v) { statusEl.textContent = '请选择日期'; return; }
@@ -196,27 +229,33 @@ document.getElementById('jumpBtn').onclick = async () => {
     const r = await fetch(`/api/bookmarks/find?at=${encodeURIComponent(v)}&by=created_at`);
     const data = await r.json();
     if (data.offset == null) { statusEl.textContent = '无匹配'; return; }
-    await ensureLoaded(data.offset);
-    const el = feed.querySelector(`[data-offset="${data.offset}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('flash');
-      setTimeout(() => el.classList.remove('flash'), 1600);
-      statusEl.textContent = `已跳转到第 ${data.offset + 1} 条（发布于 ${fmtDate(data.post && data.post.created_at)}）`;
+    const target = allItems[data.offset];
+    // 高亮：设置 flashId，渲染时命中即加 flash；并在一段时间后清除
+    flashId = target ? target.id : null;
+    vlist.scrollToIndex(data.offset, 'center');
+    // 立即给当前可见命中的卡片加高亮(若已挂载)
+    if (flashId) {
+      const node = viewport.querySelector(`.card[data-id="${CSS.escape(flashId)}"]`);
+      if (node) node.classList.add('flash');
+      setTimeout(() => {
+        flashId = null;
+        viewport.querySelectorAll('.card.flash').forEach(n => n.classList.remove('flash'));
+      }, 1700);
     }
+    statusEl.textContent = `已跳转到第 ${data.offset + 1} 条（发布于 ${fmtDate(data.post && data.post.created_at)}）`;
   } catch (e) { statusEl.textContent = '跳转失败: ' + e.message; }
 };
 
-// 同步
+// ---- 同步(代理恢复后可用) ----
 document.getElementById('syncBtn').onclick = async () => {
   const btn = document.getElementById('syncBtn');
-  btn.disabled = true; statusEl.textContent = '正在从 x.com 抓取…（需调试 Edge 在线）';
+  btn.disabled = true; statusEl.textContent = '正在从 x.com 抓取…';
   try {
     const r = await fetch('/api/sync', { method: 'POST' });
     const data = await r.json();
     if (data.ok) {
       statusEl.textContent = `同步完成：新增 ${data.added} / 本次见 ${data.seen} / 共 ${data.total}`;
-      reset();
+      await loadAll();   // 重新拉全量
     } else {
       statusEl.textContent = '同步失败: ' + (data.error || '未知');
     }
@@ -224,9 +263,10 @@ document.getElementById('syncBtn').onclick = async () => {
   finally { btn.disabled = false; }
 };
 
-document.getElementById('topBtn').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+// ---- 回到顶部 ----
+document.getElementById('topBtn').onclick = () => vlist.scrollToTop();
 
-// 灯箱：点击帖子内图片，在当前页面展示 :large 原比例大图
+// ---- 灯箱：点击帖子内图片，在当前页面展示 :large 原比例大图 ----
 const lightbox = document.getElementById('lightbox');
 const lbImg = document.getElementById('lbImg');
 const lbLoading = document.getElementById('lbLoading');
@@ -245,7 +285,7 @@ function closeLightbox() {
   lbImg.src = '';
   document.body.style.overflow = '';
 }
-feed.addEventListener('click', e => {
+viewport.addEventListener('click', e => {
   const a = e.target.closest('.imglink');
   if (a) { e.preventDefault(); openLightbox(a.dataset.full); }
 });
@@ -253,7 +293,7 @@ lightbox.addEventListener('click', e => { if (e.target !== lbImg) closeLightbox(
 document.getElementById('lbClose').addEventListener('click', closeLightbox);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox(); });
 
-reset();
+loadAll();
 </script>
 </body>
 </html>

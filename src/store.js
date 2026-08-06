@@ -22,12 +22,10 @@ function ensure() {
 let cache = null;
 
 // 排序：以帖子真实发布时间 created_at 倒序为主（honest，数据分散）；
-// 同时间回退 ingested_at 倒序，再回退 id，保证稳定且不依赖不可靠的「收藏时间」。
+// 同时间回退 id，保证稳定且不依赖不可靠的「收藏时间」。
 function cmp(a, b) {
   const r = (b.created_at || '').localeCompare(a.created_at || '');
   if (r !== 0) return r;
-  const r2 = (b.ingested_at || '').localeCompare(a.ingested_at || '');
-  if (r2 !== 0) return r2;
   return (b.id || '').localeCompare(a.id || '');
 }
 
@@ -56,6 +54,12 @@ function append(post) {
   fs.appendFileSync(JSONL, JSON.stringify(post) + '\n');
   writeMeta();
   return true;
+}
+
+// 仅判断是否存在（不触发写入），供 fetcher 在分配 index 前判断新帖
+function has(id) {
+  const c = load();
+  return c.byId.has(id);
 }
 
 function writeMeta() {
@@ -89,8 +93,7 @@ function page(cursor = 0, limit = 20) {
 /**
  * 时间跳转定位：在列表中找到「时间字段 field 不晚于 atISO」且最接近该时刻的帖子
  * （即 field 最大且 <= atISO 的那条），返回其 offset，前端据此滚动并高亮。
- *  - field 默认 'created_at'（帖子真实发布时间，数据可靠、分散，是跳转的主要依据）。
- *    'ingested_at' 为「入库时间」，仅作兜底排序/审计用。
+ *  - field 默认 'created_at'（帖子真实发布时间，数据可靠、分散，是跳转的主要依据）；'index' 作为稳定序号/兜底排序键。
  *  - 若没有任何帖子 <= atISO（选定日期早于全部帖子），返回 offset=0（列表顶部）。
  */
 function findByTime(atISO, field = 'created_at') {
@@ -115,4 +118,27 @@ function compact() {
   return c.items.length;
 }
 
-module.exports = { ensure, load, reload, append, compact, getMeta, page, findByTime, JSONL, META };
+/**
+ * 给「缺少 index 字段」的帖子批量补一个自增序号（单次批量重写，低频 I/O）。
+ * 需要传入 global 模块的 nextId 以统一计数；返回补了多少条。
+ * 与 compact 同理，仅在批量操作完成后调用一次。
+ */
+function backfillIndex(global) {
+  if (!global || typeof global.nextId !== 'function') throw new Error('backfillIndex 需要 global 模块（提供 nextId）');
+  const c = load();
+  let n = 0;
+  for (const p of c.items) {
+    if (p && p.id != null && p.index == null) {
+      p.index = global.nextId();
+      n++;
+    }
+  }
+  if (n > 0) {
+    const body = c.items.map(p => JSON.stringify(p)).join('\n') + (c.items.length ? '\n' : '');
+    fs.writeFileSync(JSONL, body);
+    writeMeta();
+  }
+  return n;
+}
+
+module.exports = { ensure, load, reload, append, has, compact, backfillIndex, getMeta, page, findByTime, JSONL, META };
