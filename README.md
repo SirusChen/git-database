@@ -23,7 +23,7 @@ public/index.html ──无限滚动 + 按时间跳转──► 浏览器
 
 四个模块（源码均在 `src/`，另含一个数据契约模块）：
 1. **抓取 + API**（`src/fetcher.js` + `src/server.js`）：**纯 Node 直接模拟 x.com 的 GraphQL 请求**（不依赖任何浏览器/调试 Edge），经本机 SOCKS5 代理出网，游标翻页入库；对外提供 HTTP API，`/api/sync` 按需实时刷新，日常浏览只读本地文件库。
-2. **文件库 + 数据结构**（`src/store.js` + `src/normalize.js` + `data/`）：帖子以 JSONL 存储，按 `id` 去重、append-only；`meta.json` 记录计数与时间范围；`normalize.js` 统一定义库内 schema（原始节点→规范化），fetcher 与 seed 共用。
+2. **文件库 + 数据结构**（`src/store.js` + `src/normalize.js` + `data/`）：帖子以 JSONL 存储，按 `id` 去重、append-only；`meta.json` 记录计数与时间范围；`normalize.js` 统一定义库内 schema（原始节点→规范化），fetcher 复用。
 3. **README**（本文件）：项目设计。
 4. **浏览入口**（`public/index.html` + `src/server.js`）：向下滚动渐进加载帖子；按日期筛选首条帖子并跳转高亮。
 
@@ -34,13 +34,12 @@ public/index.html ──无限滚动 + 按时间跳转──► 浏览器
 ```
 项目根目录：`D:\Workspace\git-database`
 
-├─ package.json         # pnpm 项目配置（scripts: start / dev / seed / sync）
+├─ package.json         # pnpm 项目配置（scripts: start / dev / sync）
 ├─ src/                 # 所有模块源码（按模块拆分）
 │  ├─ store.js          # 模块2：文件库（jsonl + meta）、去重、分页、时间定位
-│  ├─ normalize.js      # 模块2：数据结构（原始节点 → 统一 schema，fetcher 与 seed 共用）
+│  ├─ normalize.js      # 模块2：数据结构（原始节点 → 统一 schema，fetcher 复用）
 │  ├─ fetcher.js        # 模块1：纯 Node + SOCKS5 代理抓取 → 规范化 → 翻页入库（不依赖浏览器）
-│  ├─ server.js         # 模块1+4：HTTP API + 静态托管（浏览入口）
-│  └─ seed.js           # 联调：无代理时填充测试数据（真实样本 + 合成）
+│  └─ server.js         # 模块1+4：HTTP API + 静态托管（浏览入口）
 ├─ public/index.html    # 模块4：浏览前端（无限滚动 + 时间跳转）
 ├─ bookmarks_params.json / cookies.json  # 接口参数 / 会话密钥（见下）
 ├─ data/
@@ -69,7 +68,7 @@ pnpm install      # 初始化项目（零运行时依赖，仅生成 pnpm-lock.y
 pnpm start        # node src/server.js → http://localhost:3000
 # 开发热重载：pnpm dev   （node --watch，改文件自动重启）
 ```
-> 本机可用命令：`pnpm start` / `pnpm dev` / `pnpm seed` / `pnpm sync`。
+> 本机可用命令：`pnpm start` / `pnpm dev` / `pnpm sync`。
 > 若 PowerShell 中 `pnpm` 不可用，可用 `corepack pnpm@9 <cmd>` 代替（pnpm 经 corepack 安装）。
 
 ### 2. 首次同步（抓取并入库）
@@ -132,7 +131,7 @@ curl -X POST http://localhost:3000/api/sync
 
 | 模块 | 状态 | 方法 |
 |------|------|------|
-| store.js 文件库 | ✅ | `seed.js` 填充 1059 条（1000 真实 + 59 合成），append 去重、page 分页、findByTime 定位均通过 |
+| store.js 文件库 | ✅ | 1000 条真实书签（已清除测试 seed），append 去重、page 分页、findByTime 定位均通过 |
 | server.js HTTP API | ✅ | curl 验证：`/api/meta`（1059条/日期范围）、`/api/bookmarks` 分页（cursor=0→2）、`/api/bookmarks/find?at=` 时间定位（offset 1031 精确）、未来日期返回 offset=0 |
 | fetcher.js 抓取 | ⚠️ 代码正确，待代理恢复实跑 | 纯 Node + SOCKS5 代理隧道 + TLS 已验证可建立隧道（与 curl 表现一致）；请求构造、头部、时间线解析、翻页均已单测通过。当前 Clash 代理**上游离线**导致 `/api/sync` 返回 `200+{ok:false, error}`（明确提示代理离线，非 500）。代理恢复后 `POST /api/sync` 即可实时抓取。此前已成功抓取过 1000+ 条真实书签。 |
 | public/index.html 前端 | ✅ | 浏览器驱动验证：初始加载 20 卡片（首条为真实推文 AyanoCanvas）、无限滚动加载至 40+、时间跳转 2026-07-25 → 定位到 offset 1031 并滚动高亮、实体链接（#话题/@提及/URL）蓝色渲染、stats 行完整 |

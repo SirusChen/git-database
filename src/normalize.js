@@ -3,8 +3,7 @@
  * 把 x.com GraphQL 返回的「原始推文节点」映射为本项目的统一 schema。
  *
  * 这是数据入库前的唯一形状定义处：
- *   - fetcher.js（实时抓取）与 seed.js（测试数据）都复用本函数，
- *     保证无论数据来源，落库的 JSONL 字段完全一致。
+ *   - fetcher.js（实时抓取）复用本函数，落库的形状唯一、可控。
  *
  * 输出 schema（每条帖子）：
  *   { id, created_at, ingested_at, author{id,screen_name,name,avatar},
