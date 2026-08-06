@@ -289,8 +289,11 @@ async function probeConnection() {
  *    最后调用 store.replaceAll 一次性低频落盘。**index 严格跟随书签列表顺序，与 created_at 无关。**
  */
 async function resync(opts = {}) {
+  const transport = opts.transport || 'node';
   const pageDelayMs = opts.pageDelayMs != null ? opts.pageDelayMs : 60000;
   const maxPages = opts.maxPages || 100000;
+  const firstPageMs = opts.firstPageMs != null ? opts.firstPageMs : 12000;
+  const betweenPageMs = opts.betweenPageMs != null ? opts.betweenPageMs : (pageDelayMs || 5000);
 
   let params, cookies;
   try { params = JSON.parse(fs.readFileSync(PARAMS_PATH, 'utf8')); }
@@ -302,15 +305,43 @@ async function resync(opts = {}) {
   const cookieHeader = buildCookieHeader(cookies);
   const proxy = proxyConfig();
 
-  // 步骤2/探测：先取首屏（同时验证代理可达 + Cookie 有效）。失败直接抛出，绝不破坏现有数据。
-  let first;
-  try {
-    first = await fetchPage(params, ct0c.value, cookieHeader, proxy, null);
-  } catch (e) {
-    throw new Error('无法开始全量同步（首屏抓取失败，代理/上游可能离线或 Cookie 过期）：' + e.message + ' —— 本地 bookmarks.jsonl 与 .bak 均未被改动。');
+  // 累积「原始 GraphQL 节点」（API 返回顺序：首屏=最新收藏，Bottom=更早）
+  let rawNodes = [];
+  let pages = 0;
+
+  if (transport === 'cdp') {
+    // 传输层 B：经已登录调试 Edge (CDP) 抓包，绕过 Node TLS 指纹封锁
+    const cdp = require('./cdp-fetch');
+    console.error(`[resync] transport=cdp — 驱动 ${cdp.CDP_PORT} 已登录 Edge 打开 Bookmarks 页...`);
+    const r = await cdp.fetchAll({ maxPages, firstPageMs, betweenPageMs });
+    rawNodes = r.nodes;
+    pages = r.pages;
+    console.error(`[resync] cdp 抓得原始节点=${rawNodes.length}, 页数=${pages}, 到底=${r.reachedEnd}`);
+  } else {
+    // 传输层 A：纯 Node（现有逻辑，未改动）
+    let first;
+    try {
+      first = await fetchPage(params, ct0c.value, cookieHeader, proxy, null);
+    } catch (e) {
+      throw new Error('无法开始全量同步（首屏抓取失败，代理/上游可能离线或 Cookie 过期）：' + e.message + ' —— 本地 bookmarks.jsonl 与 .bak 均未被改动。');
+    }
+    rawNodes.push(...first.nodes);
+    pages = 1;
+    let total = first.nodes.length, bottom = first.bottom;
+    console.error(`[resync] page 1 ok, posts=${total}`);
+    while (bottom && pages < maxPages) {
+      await sleep(pageDelayMs);
+      const page = await fetchPage(params, ct0c.value, cookieHeader, proxy, bottom);
+      rawNodes.push(...page.nodes);
+      pages++;
+      total += page.nodes.length;
+      bottom = page.bottom;
+      console.error(`[resync] page ${pages} ok, posts so far=${total}`);
+    }
   }
 
-  // 连通正常 → 清空本地书签数据（jsonl + meta）并重置全局自增计数
+  // —— 以下逻辑两种传输完全一致（index 严格跟随书签列表顺序，与 created_at 无关）——
+  // 首屏成功 → 清空本地书签数据（jsonl + meta）并重置全局自增计数
   store.clearAll();
   global.set('seq', 0);
   global.flush();
@@ -321,39 +352,28 @@ async function resync(opts = {}) {
     }
   }
 
-  // 内存累积所有规范化帖子（按 API 返回顺序，不做任何写盘）
-  const all = [];
-  const pushNodes = (nodes) => {
-    for (const n of nodes) {
-      const p = normalize(n);
-      if (p && p.id) all.push(p);
-    }
-  };
-  pushNodes(first.nodes);
-  let pages = 1, total = first.nodes.length, bottom = first.bottom;
-  console.error(`[resync] page 1 ok, posts=${total}`);
-
-  // 后续页：每页间隔 pageDelayMs，仅累积到内存
-  while (bottom && pages < maxPages) {
-    await sleep(pageDelayMs);
-    const page = await fetchPage(params, ct0c.value, cookieHeader, proxy, bottom);
-    pushNodes(page.nodes);
-    pages++;
-    total += page.nodes.length;
-    bottom = page.bottom;
-    console.error(`[resync] page ${pages} ok, posts so far=${total}`);
-  }
-
-  // 步骤3：index 严格按「书签列表顺序」分配（与 created_at 无关）。
-  // API 顺序为「最新收藏在前、最旧收藏在后」；用户要求最旧的（页数最大、链尾）为 index=1，
-  // 故整体反转使链尾排到首位，自增从 1 开始（旧→新：index 1..N）。
-  all.reverse();
-  for (const p of all) p.index = global.nextId();
-  const written = store.replaceAll(all);   // 单次低频落盘
+  // 反转：使最旧收藏排首位；自增 index 从 1 开始（旧→新：index 1..N）
+  const written = persistRawNodes(rawNodes);
   global.flush();
 
-  const meta = store.getMeta();
-  return { mode: 'resync', cleared: true, pages, total, written, seq: global.get('seq') };
+  return { mode: 'resync', transport, cleared: true, pages, total: rawNodes.length, written, seq: global.get('seq') };
 }
 
-module.exports = { sync, resync, probeConnection, parseTimeline, buildUrl, buildHeaders, buildCookieHeader };
+/**
+ * 把「原始 GraphQL 节点」规范化、按书签列表顺序赋 index、单次落盘。
+ * 抽出为独立函数：resync 的两种传输（node / cdp）共用同一套 index 语义，也便于单测。
+ *  - rawNodes 顺序：API 返回顺序（首屏最新、Bottom 更早）。
+ *  - 反转后最旧排首位 → index 从 1 自增（旧→新：index 1..N）。
+ */
+function persistRawNodes(rawNodes) {
+  rawNodes.reverse();
+  const all = [];
+  for (const n of (rawNodes || [])) {
+    const p = normalize(n);
+    if (p && p.id) all.push(p);
+  }
+  for (const p of all) p.index = global.nextId();
+  return store.replaceAll(all);
+}
+
+module.exports = { sync, resync, persistRawNodes, probeConnection, parseTimeline, buildUrl, buildHeaders, buildCookieHeader };
