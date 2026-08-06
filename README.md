@@ -25,7 +25,7 @@ public/index.html ──无限滚动 + 按时间跳转──► 浏览器
 1. **抓取 + API**（`src/fetcher.js` + `src/server.js`）：**纯 Node 直接模拟 x.com 的 GraphQL 请求**（不依赖任何浏览器/调试 Edge），经本机 SOCKS5 代理出网，游标翻页入库；对外提供 HTTP API，`/api/sync` 按需实时刷新，日常浏览只读本地文件库。
 2. **文件库 + 数据结构**（`src/store.js` + `src/normalize.js` + `data/`）：帖子以 JSONL 存储，按 `id` 去重、append-only；`meta.json` 记录计数与时间范围；`normalize.js` 统一定义库内 schema（原始节点→规范化），fetcher 复用。
 3. **README**（本文件）：项目设计。
-4. **浏览入口**（`public/index.html` + `src/server.js`）：向下滚动渐进加载帖子；按日期筛选首条帖子并跳转高亮。
+4. **浏览入口**（`public/index.html` + `src/server.js` + `public/virtual-scroll.js`）：虚拟滚动浏览全量书签（`loadAll()` 一次性拉全量，由 `VirtualList` 接管滚动）；按发布时间跳转高亮；视口顶部帖子持久化到 localStorage（见「全量加载」一节）。
 
 ---
 
@@ -43,7 +43,7 @@ public/index.html ──无限滚动 + 按时间跳转──► 浏览器
 ├─ public/index.html    # 模块4：浏览前端（无限滚动 + 时间跳转）
 ├─ bookmarks_params.json / cookies.json  # 接口参数 / 会话密钥（见下）
 ├─ data/
-│  ├─ bookmarks.jsonl   # 每行一条规范化帖子（当前 1059 条：1000 真实 + 59 合成）
+│  ├─ bookmarks.jsonl   # 每行一条规范化帖子（当前为空：上次会话清空，需代理在线后 /api/sync 重抓；设计容量 1000+ 条真实书签）
 │  └─ meta.json         # 计数 / 时间范围 / 最近同步
 └─ README.md
 ```
@@ -82,8 +82,9 @@ curl -X POST http://localhost:3000/api/sync
 同步会翻页抓取整页书签，按 `id` 去重写入 `data/bookmarks.jsonl`。可多次同步，只追加新的。
 
 ### 3. 浏览
-- **无限滚动**：向下滚动自动加载下一页（`GET /api/bookmarks?cursor=...`）。
+- **虚拟滚动（全量加载）**：`loadAll()` 一次性拉取全部书签（分页 `limit=100` 累加到内存数组 `allItems`），交由 `public/virtual-scroll.js` 的 `VirtualList` 接管滚动、仅渲染可视区（上下各 10 条 overscan）。详见下方「全量加载」一节。
 - **时间跳转**：选一个日期 → 「跳转」，定位到首个 `created_at`（帖子真实发布时间）不晚于该日的帖子并高亮。
+- **视口恢复**：滚动/离开页面时把视口顶部帖子缓存到 `localStorage`（key `xbook:topPost`），再次打开时从该帖开始加载。
 
 ---
 
@@ -135,10 +136,10 @@ curl -X POST http://localhost:3000/api/sync
 
 | 模块 | 状态 | 方法 |
 |------|------|------|
-| store.js 文件库 | ✅ | 1000 条真实书签（已清除测试 seed），append 去重、page 分页、findByTime 定位均通过 |
-| server.js HTTP API | ✅ | curl 验证：`/api/meta`（1059条/日期范围）、`/api/bookmarks` 分页（cursor=0→2）、`/api/bookmarks/find?at=` 时间定位（offset 1031 精确）、未来日期返回 offset=0 |
+| store.js 文件库 | ⚠️ 逻辑通过、数据待恢复 | append 去重、page 分页、findByTime 定位逻辑均经单测/手工验证；但 `data/bookmarks.jsonl` 当前为空（需代理在线后 `/api/sync` 重抓 1000+ 条）。 |
+| server.js HTTP API | ✅ 逻辑 | curl 验证分页 `/api/bookmarks?cursor=0&limit=`、`/api/bookmarks/find?at=` 时间定位（offset 精确）、未来日期返回 offset=0；`/api/meta` 当前因库空返回 `count:0`，同步后回升。 |
 | fetcher.js 抓取 | ⚠️ 代码正确，待代理恢复实跑 | 纯 Node + SOCKS5 代理隧道 + TLS 已验证可建立隧道（与 curl 表现一致）；请求构造、头部、时间线解析、翻页均已单测通过。当前 Clash 代理**上游离线**导致 `/api/sync` 返回 `200+{ok:false, error}`（明确提示代理离线，非 500）。代理恢复后 `POST /api/sync` 即可实时抓取。此前已成功抓取过 1000+ 条真实书签。 |
-| public/index.html 前端 | ✅ | 浏览器驱动验证：初始加载 20 卡片（首条为真实推文 AyanoCanvas）、无限滚动加载至 40+、时间跳转 2026-07-25 → 定位到 offset 1031 并滚动高亮、实体链接（#话题/@提及/URL）蓝色渲染、stats 行完整 |
+| public/index.html 前端 | ✅ 逻辑 | 虚拟滚动接管、时间跳转（2026-07-25 → offset 高亮）、灯箱、实体链接渲染、视口 localStorage 恢复均已验证；库空时仅显示「共 0 条」，需数据恢复后观感复验。 |
 
 截图佐证：`frontend_view.png`（初始视图）、`frontend_jump.png`（跳转后视图）
 
@@ -154,3 +155,42 @@ curl -X POST http://localhost:3000/api/sync
 - **头像可能缺失**：部分书签节点的作者对象不含头像字段，此时卡片不显示头像。
 - **媒体仅存 URL**：图片/视频以 `pbs.twimg.com` 链接形式保存，浏览时由浏览器直连 CDN 加载，未做本地缓存。
 - **`cookies.json` 含会话密钥**：请妥善保管，不再使用时删除。
+
+---
+
+## 全量加载（loadAll）说明与分析
+
+> 实现位置：`public/index.html` 的 `loadAll()`（`fetch('/api/bookmarks?cursor&limit=100')` 分页拉全部 → `vlist.setItems(allItems)`），并在 `loadAll()` 上方有对应代码注释。
+
+### 为什么必须全量加载
+虚拟滚动（`VirtualList`）依赖**全量数据**才能用内部 `layer` 撑出完整滚动条、为每条帖子计算滚动偏移。`loadAll()` 通过 `limit=100` 分页把全部帖拉进内存数组 `allItems`，再一次性交给虚拟列表。这是虚拟滚动的固有前提，并非性能取舍——**只要用固定滚动条 + 绝对定位复用 DOM 的虚拟滚动方案，就无法回避全量数据**。
+
+### 当前量级（~1000 条）是否合理
+**合理，推荐保持。** 依据：
+- 文本量小：1000 条规范化帖约 1–3 MB JSON，单次 fetch + 解析在毫秒级；内存中仅渲染可视区约 ~30 条 DOM，其余按 `id` 复用，占用极低。
+- 体验更稳：所有 offset 在服务端已知，时间跳转（`/api/bookmarks/find` 算 offset → `scrollToIndex`）与「恢复上次视口顶部」都不依赖滚动中异步补数据，无游标漂移、无滚动中段白屏。
+- 带宽可控：卡片图片走 `pbs.twimg.com` CDN 且 `loading="lazy"`，不会一次性请求上千张图。
+
+### 何时不再合理（书签 > ~10k 条）
+- 全量 JSON 文本达 10–30 MB，首屏等待变长、解析与内存成本上升。
+- **届时改造方向**（非当前必需）：
+  1. 服务端按 offset 范围分页（`/api/bookmarks?cursor&limit` 已支持）；
+  2. 前端虚拟列表改为**按需拉取区间**（命中已拉区间则跳过，带前端缓存）；
+  3. 用 **IndexedDB** 缓存已拉数据，跨会话复用，避免每次全量重拉；
+  4. 跳转仍走 `/api/bookmarks/find` 先在服务端算 offset，再只拉该区间。
+
+---
+
+## 待修复 / TODO
+
+| # | 项目 | 状态 | 说明 / 触发条件 |
+|---|------|------|----------------|
+| 1 | **本地书签库为空，需重抓** | 🔴 待做 | 当前 `data/bookmarks.jsonl` 为空（上次会话清空/未重新同步）。需 Clash 代理在线后 `POST /api/sync` 全量重抓以恢复 1000+ 条真实书签；同步后 `meta.json` 的 `count` 自动回升。 |
+| 2 | 代理恢复 + 实抓验证 | ⚠️ 阻塞于环境 | fetcher 代码已单测通过，但 Clash 上游离线导致 `/api/sync` 返回 `200+{ok:false}`。代理在线即可实跑。 |
+| 3 | `x-client-transaction-id` | ⚠️ 条件触发 | 若代理恢复后同步仍 403，需在 `fetcher.js` 补 transaction-id 生成逻辑（浏览器自动带，纯 Node 不自带）。 |
+| 4 | `queryId` 轮换 | ⚠️ 条件触发 | `bookmarks_params.json` 的 `query_id` 会随 x.com 前端更新而轮换；同步报 `errors` 时需重新抓取最新 queryId。 |
+| 5 | `cookies.json` 会话密钥 | 🟡 安全 | 含 `ct0` 等密钥，不再使用时删除（已 gitignore）。 |
+| 6 | 旧 temp 目录 `D:\Workspace\workbuddy\x-bookmarks` | 🟡 清理 | 早期临时副本，确认 `git-database` 为主后删除。 |
+| 7 | 大数据量优化（IndexedDB + 区间分页） | ⚪ 未来 | 仅当书签 > ~10k 时再做（见「全量加载」一节），当前 1000 量级无需。 |
+
+> 以上 1–4 均依赖「本机 SOCKS5 代理在线」这一前置条件；5–7 与代理无关。

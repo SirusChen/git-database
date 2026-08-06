@@ -34,7 +34,10 @@ function proxyConfig() {
       return { type, host: u.hostname, port: Number(u.port) || 7890 };
     } catch (_) { /* fallthrough to default */ }
   }
-  return { type: 'socks', host: '127.0.0.1', port: 7890 };
+  // 默认 http（而非 socks）：7890 是 Clash mixed 口，HTTP CONNECT 与 SOCKS5 都能建隧道，
+  // 但实测 SOCKS5 路径经 Clash 极不稳定（Node 单次连接几乎必败），而浏览器走 HTTP CONNECT 可正常上 x.com。
+  // 故默认用 http，与浏览器一致的路径最稳。
+  return { type: 'http', host: '127.0.0.1', port: 7890 };
 }
 
 // ---- SOCKS5 CONNECT（无认证） → 返回已连通目标 host:port 的 TCP socket ----
@@ -91,48 +94,68 @@ function httpConnect(proxy, host, port) {
 }
 
 // ---- 经代理做 HTTPS GET（隧道 + TLS），返回 {status, body} ----
-function httpsGet(url, headers, proxy, timeoutMs = 20000) {
+// 单次尝试（供重试包装器调用）。仅网络层错误会以 NETERR: 前缀 reject，业务错误（如 403）正常 resolve 由调用方判断。
+function httpsGetOnce(url, headers, proxy, timeoutMs) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     let settled = false;
     const fail = (e) => {
       if (settled) return;
       settled = true;
-      const msg = e && e.message || String(e);
-      // 把底层网络错误翻译成可操作提示：绝大多数情况是本地代理(Clash)上游离线
-      if (/ECONNRESET|socket disconnected|secure TLS|TLS handshake|ETIMEDOUT|ECONNREFUSED/.test(msg)) {
-        reject(new Error('无法与 x.com 建立连接（' + msg + '）。多半是本地代理 ' + proxy.type + '://' + proxy.host + ':' + proxy.port + ' 的上游已离线——请确认 Clash/代理已启动且能访问外网，再试同步。'));
+      const msg = (e && e.message) || String(e);
+      if (/ECONNRESET|socket (hang up|disconnected)|secure TLS|TLS handshake|ETIMEDOUT|ECONNREFUSED|disconnected before secure/i.test(msg)) {
+        reject(new Error('NETERR: ' + msg));
       } else {
         reject(e);
       }
     };
 
-    (async () => {
-      try {
-        const tcp = proxy.type === 'socks'
-          ? await socksConnect(proxy, u.hostname, 443)
-          : await httpConnect(proxy, u.hostname, 443);
-        const sock = tls.connect({ socket: tcp, servername: u.hostname }, () => {});
-        const timer = setTimeout(() => { try { sock.destroy(); } catch (_) {} fail(new Error('请求超时（' + timeoutMs / 1000 + 's）')); }, timeoutMs);
-
-        sock.on('error', fail);
-        sock.on('secureConnect', () => {
-          // 隧道上已完成 TLS，这里用 http（而非 https）在已加密的 socket 上发明文 HTTP
-          const req = http.request({
-            host: u.hostname, port: 443,
-            path: u.pathname + u.search, method: 'GET',
-            headers, agent: false, createConnection: () => sock
-          }, (res) => {
-            let body = '';
-            res.on('data', (d) => body += d);
-            res.on('end', () => { clearTimeout(timer); if (!settled) { settled = true; resolve({ status: res.statusCode, body }); } });
-          });
-          req.on('error', fail);
-          req.end();
+    const tcpP = proxy.type === 'socks'
+      ? socksConnect(proxy, u.hostname, 443)
+      : httpConnect(proxy, u.hostname, 443);
+    tcpP.then((tcp) => {
+      const sock = tls.connect({ socket: tcp, servername: u.hostname }, () => {});
+      const timer = setTimeout(() => { try { sock.destroy(); } catch (_) {} fail(new Error('请求超时（' + timeoutMs / 1000 + 's）')); }, timeoutMs);
+      sock.on('error', fail);
+      sock.on('secureConnect', () => {
+        // 隧道上已完成 TLS，这里用 http（而非 https）在已加密的 socket 上发明文 HTTP
+        const req = http.request({
+          host: u.hostname, port: 443,
+          path: u.pathname + u.search, method: 'GET',
+          headers, agent: false, createConnection: () => sock
+        }, (res) => {
+          let body = '';
+          res.on('data', (d) => body += d);
+          res.on('end', () => { clearTimeout(timer); if (!settled) { settled = true; resolve({ status: res.statusCode, body }); } });
         });
-      } catch (e) { fail(e); }
-    })();
+        req.on('error', fail);
+        req.end();
+      });
+    }).catch(fail);
   });
+}
+
+// 重试包装：x.com 对机房/VPN 出口 IP 风控极严，节点常间歇性重置/超时。
+// 单次失败就抛会让整轮 resync 从头重抓；这里对网络错误自动重试（退避），模拟浏览器的内部重试韧性。
+async function httpsGet(url, headers, proxy, timeoutMs = 20000) {
+  const maxAttempts = Number(process.env.HTTP_RETRY) || 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await httpsGetOnce(url, headers, proxy, timeoutMs);
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e && e.message) || e);
+      const retryable = /NETERR:|ECONNRESET|socket (hang up|disconnected)|secure TLS|TLS handshake|ETIMEDOUT|ECONNREFUSED|disconnected before secure/i.test(msg);
+      if (!retryable || attempt === maxAttempts) break;
+      await new Promise((r) => setTimeout(r, 1500 * attempt)); // 退避：1.5s, 3s, ...
+    }
+  }
+  const msg = String((lastErr && lastErr.message) || lastErr);
+  if (/NETERR:|ECONNRESET|socket (hang up|disconnected)|secure TLS|TLS handshake|ETIMEDOUT|ECONNREFUSED|disconnected before secure/i.test(msg)) {
+    throw new Error('无法与 x.com 建立连接（' + msg.replace(/^NETERR: /, '') + '）。多半是本地代理 ' + proxy.type + '://' + proxy.host + ':' + proxy.port + ' 的上游节点不稳定/被 x.com 重置——浏览器有内部重试能凑巧成功，故请确认 Clash 节点可用（或换稳定节点）后再同步。');
+  }
+  throw lastErr;
 }
 
 function buildHeaders(ct0, cookieHeader) {

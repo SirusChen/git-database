@@ -196,7 +196,9 @@ viewport.addEventListener('scroll', () => {
 window.addEventListener('pagehide', saveTopPost);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTopPost(); });
 
-// ---- 一次性加载全部书签(虚拟滚动需要全量数据来计算滚动条) ----
+// ---- 一次性加载全部书签（虚拟滚动需要全量数据来撑滚动条 & 算偏移；详见 README「全量加载」一节）----
+//  当前 ~1000 条量级下全量拉取合理：文本量小（1–3MB）、无游标漂移、跳转/恢复视口更稳、图片走 CDN 懒加载不占带宽。
+//  若书签增长到 ~10k+，再改为「服务端区间分页 + IndexedDB 缓存 + 按需拉取」（见 README TODO #7）。
 async function loadAll() {
   allItems = [];
   let cursor = 0, pages = 0;
