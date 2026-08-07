@@ -4,7 +4,7 @@
  * 用法:
  *   node src/resync-retry.js [pageDelayMs] [--cdp]
  * 参数:
- *   pageDelayMs   每页之间的间隔毫秒（默认 60000 = 1 分钟；CDP 模式下也作为滚动间隔）
+ *   pageDelayMs   每页之间的间隔毫秒（默认 60000 = 1 分钟；CDP 模式下作为页面间 fetch 重放间隔）
  *   --cdp         使用 CDP 传输层：经已登录调试 Edge (9222) 抓包，绕过 Node TLS 指纹封锁
  * 环境变量:
  *   RETRY_INTERVAL_MS  每次失败后的重试间隔（默认 1000 = 1s）

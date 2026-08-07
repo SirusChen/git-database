@@ -2,8 +2,8 @@
  * cdp-fetch.js — 传输层 B：经已登录调试 Edge (CDP) 直接重放 x.com Bookmarks GraphQL 分页接口。
  *
  * 为什么不直接「滚动页面」：
- *  本环境实测 x.com 对 Bookmarks 时间线的「无限滚动自动翻页」做了自动化封锁——
- *  无论怎么 scroll / 键盘 / 触底等待，第 2 页及以后永远加载不出来（Bookmarks GraphQL 请求只出现 1 次）。
+ *  通过 agent-browser 驱动调试 Edge「无限滚动」时，触发不到后续分页——无论 scroll / 键盘 / 触底等待，
+ *  Bookmarks GraphQL 请求只出现 1 次，第 2 页及以后永远加载不出来。
  *  但「直接重放 GraphQL 请求」可行：浏览器发出的首屏请求自带 x-client-transaction-id 等反爬头，
  *  在页面上下文里用 fetch 重放（带上这些头、只换 cursor）能稳定拿到后续每一页（2026-08-07 探针验证：第 2 页 200 + 22 节点）。
  *
@@ -21,6 +21,7 @@ const WebSocket = globalThis.WebSocket;
 const http = require('http');
 const { parseTimeline } = require('./fetcher');
 const { normalize } = require('./normalize');
+const store = require('./store');
 
 const CDP_PORT = Number(process.env.CDP_PORT) || 9222;
 const BOOKMARKS_URL = 'https://x.com/i/bookmarks';
@@ -91,7 +92,7 @@ async function openBookmarksTab() {
  * 全量抓取（传输层 B）：直接重放 Bookmarks GraphQL 分页。
  * 返回 { nodes: [原始 tr 节点...], pages, reachedEnd }。
  */
-async function fetchAll({ maxPages = 500, betweenPageMs = 1500, firstPageMs = 25000 } = {}) {
+async function fetchAll({ maxPages = 500, betweenPageMs = 1500, firstPageMs = 25000, stopIfSeen = false } = {}) {
   const { browser, page, targetId, created } = await openBookmarksTab();
 
   // —— 捕获首屏 Bookmarks 请求 + 响应 ——
@@ -146,7 +147,16 @@ async function fetchAll({ maxPages = 500, betweenPageMs = 1500, firstPageMs = 25
   if (!baseBody.variables) baseBody.variables = {};
 
   const allNodes = [];
-  allNodes.push(...capture.nodes);
+  let page1New = 0;
+  if (stopIfSeen) {
+    // 增量模式：page 1 只收「本地 store 没有」的新节点；其余视为已同步边界
+    for (const n of capture.nodes) {
+      const id = normalize(n).id;
+      if (id && !store.has(id)) { allNodes.push(n); page1New++; }
+    }
+  } else {
+    allNodes.push(...capture.nodes);
+  }
   let pages = 1;
   let cursor = capture.cursor;
   // 去重 / 防循环终止：记录已见 id，并跟踪上一页 bottom 游标是否真的推进
@@ -154,7 +164,11 @@ async function fetchAll({ maxPages = 500, betweenPageMs = 1500, firstPageMs = 25
   for (const n of capture.nodes) { const id = normalize(n).id; if (id) seen.add(id); }
   const cursorSeen = new Set([cursor]);   // 收集所有出现过的 bottom 游标，任一重复即判定循环
   let reachedEnd = !cursor;
-  console.error(`[cdp-fetch] page 1 ok, nodes=${capture.nodes.length}, unique=${seen.size}, txid=${txid.slice(0, 24)}…`);
+  console.error(`[cdp-fetch] page 1 ok, nodes=${capture.nodes.length}, new=${stopIfSeen ? page1New : capture.nodes.length}, unique=${seen.size}, txid=${txid.slice(0, 24)}…`);
+  if (stopIfSeen && page1New === 0) {
+    console.error(`[cdp-fetch] page 1 全部已存在（0 新增），无新收藏，停止`);
+    cursor = null; reachedEnd = true;   // 阻止进入翻页循环
+  }
 
   // 每页最多重试 10 次；x.com 对高频 GraphQL 重放会返回 429（限流），需用「长且递增」的冷却，
   // 而不是 2/4/6/8s 的短退避（那样会在限流期反复撞墙后放弃整轮同步）。
@@ -204,17 +218,26 @@ async function fetchAll({ maxPages = 500, betweenPageMs = 1500, firstPageMs = 25
       break;
     }
     consecutive429 = 0;
-    // 统计本页新增的唯一 id（用于检测「bottom 游标循环返回重复页」）
+    // 统计本页新增的唯一 id；增量模式(stopIfSeen)下「已存在=本轮已见 或 本地 store 已有」，只收集新节点
     let newCount = 0;
-    for (const n of parsed.nodes) { const id = normalize(n).id; if (id && !seen.has(id)) { seen.add(id); newCount++; } }
+    const pageNewNodes = [];
+    for (const n of parsed.nodes) {
+      const id = normalize(n).id;
+      if (!id) continue;
+      if (seen.has(id) || (stopIfSeen && store.has(id))) continue;  // 已见过 / 已入库 → 跳过
+      seen.add(id);
+      newCount++;
+      if (stopIfSeen) pageNewNodes.push(n);   // 增量只把新节点带回去
+    }
     if (!parsed.nodes.length) { console.error(`[cdp-fetch] page ${pages + 1} 为空，判定到底`); reachedEnd = true; break; }
-    if (newCount === 0) { console.error(`[cdp-fetch] page ${pages + 1} 未产生任何新收藏（与上一页完全重复）—— x.com 的 bottom 游标已不推进，判定循环，停止。已抓 ${seen.size} 条唯一`); reachedEnd = true; break; }
-    if (cursorSeen.has(parsed.bottom)) { console.error(`[cdp-fetch] page ${pages + 1} 的 bottom 游标曾在前面出现过（循环），判定到底，停止`); reachedEnd = true; break; }
+    if (newCount === 0) { console.error(`[cdp-fetch] page ${pages + 1} 未产生新收藏（已抵达已同步边界或游标循环），停止`); reachedEnd = true; break; }
+    if (cursorSeen.has(parsed.bottom)) { console.error(`[cdp-fetch] page ${pages + 1} 的 bottom 游标重复（循环），停止`); reachedEnd = true; break; }
     cursorSeen.add(parsed.bottom);
-    allNodes.push(...parsed.nodes);
+    if (stopIfSeen) allNodes.push(...pageNewNodes);
+    else allNodes.push(...parsed.nodes);
     pages++;
     cursor = parsed.bottom;
-    console.error(`[cdp-fetch] page ${pages} ok, nodes so far=${allNodes.length}, new=${newCount}, unique=${seen.size}`);
+    console.error(`[cdp-fetch] page ${pages} ok, new=${newCount}, unique=${seen.size}`);
   }
 
   if (created) { try { browser.send('Target.closeTarget', { targetId }); } catch (_) {} }

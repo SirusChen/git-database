@@ -1,13 +1,15 @@
 /**
  * fetcher.js — 模块 1：抓取 x.com 书签（+ 翻页）
  *
- * 设计原则（重要，回应「同步不该依赖调试浏览器」的反馈）：
- *  - 纯 Node 直接模拟 x.com 的 GraphQL Bookmarks 请求，不经过任何浏览器/Edge。
- *  - x.com 在本机不可直连，必须经本地代理（默认 SOCKS5 127.0.0.1:7890，Clash）。
- *    用 SOCKS5 CONNECT 在代理上建立到 x.com:443 的隧道，再在其上做 TLS + HTTPS GET，
- *    从而规避 Node 直连时的 DNS/TLS 限制（域名由代理解析，socks5h 语义）。
- *  - 认证：静态 Bearer + 浏览器导出的 cookies（含 auth_token / ct0）+ x-csrf-token(=ct0)。
- *  - 翻页：bottomCursor → 下一页。每条原始推文经 normalize.js 映射后由 store.append 去重入库。
+ * 传输层双模式（transport）：
+ *  - 'cdp'（默认）：经已登录调试 Edge (CDP, 9222) 直接重放 Bookmarks GraphQL 分页接口，
+ *    绕过 x.com 对纯 Node 客户端的 TLS ClientHello 指纹封锁；复用浏览器已登录会话，无需 cookies.json。
+ *  - 'node'（备用）：纯 Node 直接模拟 GraphQL 请求，经本地代理（Clash 127.0.0.1:7890）连接；
+ *    因 TLS 指纹被 x.com 封锁，本环境实际不可用，仅保留作参考 / 未来 TLS 伪装方案。
+ *  - sync() 默认 cdp（增量、遇已同步边界早停）；resync() 默认 cdp（全量、replaceAll 整体落盘）。
+ *
+ * 认证（仅 node 模式需要）：静态 Bearer + cookies（含 auth_token / ct0）+ x-csrf-token(=ct0)。
+ * 翻页：bottomCursor → 下一页。原始推文经 normalize.js 映射，由 store 去重入库。
  */
 const https = require('https');
 const http = require('http');
@@ -214,10 +216,39 @@ async function fetchPage(params, ct0, cookieHeader, proxy, cursor) {
 }
 
 /**
- * 抓取并入库（纯 Node，无需浏览器）。
- *  - 二次 sync 只会追加新书签（按 id 去重）。
+ * 抓取并入库（传输层可切换；默认 CDP 经调试 Edge，可传 transport:'node' 走纯 Node 代理路径）。
+ *  - 二次 sync 只会追加新书签（按 id 去重），index 由 global.nextId() 续接当前 seq（最新=最大）。
  */
 async function sync(opts = {}) {
+  const transport = opts.transport || 'cdp';   // 本环境纯 Node 层被 x.com TLS 指纹封锁，默认走 CDP
+
+  if (transport === 'cdp') {
+    // 传输层 B：经已登录调试 Edge (CDP) 抓包，page 1 起逐页去重，碰到「本地已同步边界」即停。
+    // 只把从未见过的新书签追加进 jsonl（index 由 global.nextId() 续接，最新=最大），不重建全量。
+    const cdp = require('./cdp-fetch');
+    const maxPages = opts.maxPages || 500;
+    const r = await cdp.fetchAll({
+      maxPages,
+      firstPageMs: opts.firstPageMs != null ? opts.firstPageMs : 30000,
+      betweenPageMs: opts.betweenPageMs != null ? opts.betweenPageMs : 2500,
+      stopIfSeen: true
+    });
+    let added = 0;
+    for (const tr of r.nodes) {
+      const post = normalize(tr);
+      if (!post || !post.id) continue;
+      if (!store.has(post.id)) {
+        post.index = global.nextId();                 // 自增序号续接当前 seq（最新收藏=最大 index）
+        store.append(post);
+        added++;
+      }
+    }
+    global.flush();
+    const meta = store.getMeta();
+    return { mode: 'sync', transport, added, pages: r.pages, total: meta.count, seq: global.get('seq'), reachedExisting: r.reachedEnd };
+  }
+
+  // —— 以下为纯 Node 传输（transport==='node'）：需 cookies.json + bookmarks_params.json ——
   const maxPages = opts.maxPages || 50;
   let params, cookies;
   try { params = JSON.parse(fs.readFileSync(PARAMS_PATH, 'utf8')); }
@@ -253,7 +284,7 @@ async function sync(opts = {}) {
 
   global.flush();   // 批量抓取完成后低频落盘一次（更新自增计数）
   const meta = store.getMeta();
-  return { added, seen, pages, total: meta.count, seq: global.get('seq') };
+  return { mode: 'sync', transport, added, seen, pages, total: meta.count, seq: global.get('seq') };
 }
 
 function sleep(ms) {

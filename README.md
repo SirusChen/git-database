@@ -1,6 +1,6 @@
 # x-bookmarks — X 书签归档浏览器
 
-把 x.com 的书签抓下来存成本地文件库，并提供网页浏览（无限滚动 + 按时间跳转）。
+把 x.com 的书签抓下来存成本地文件库，并提供网页浏览（虚拟滚动 + 按时间跳转）。
 全部本地运行，不依赖任何外部数据库服务。
 
 ---
@@ -8,21 +8,21 @@
 ## 架构
 
 ```
-x.com（GraphQL Bookmarks 接口）
-        ▲  SOCKS5 代理隧道 + TLS（Node 直连，需本机代理出网）
-        │
+x.com（GraphQL Bookmarks 接口，经 Clash 代理可达）
+        ▲  CDP 重放（经已登录调试 Edge :9222，复用浏览器会话；零第三方依赖）
+        │  或  纯 Node（备用传输，被 x.com TLS 指纹封锁，本环境不可用）
 src/fetcher.js ──翻页抓取 + 规范化──► src/store.js ──写入──► data/bookmarks.jsonl
         │                                          ▲
-        │  POST /api/sync 触发                       │ 读取
+        │  POST /api/sync 触发（默认 cdp）            │ 读取
         ▼                                          │
 src/server.js (HTTP :3000) ── GET /api/bookmarks ──┘
         │  同时静态托管
         ▼
-public/index.html ──无限滚动 + 按时间跳转──► 浏览器
+public/index.html ──虚拟滚动 + 按时间跳转──► 浏览器
 ```
 
 四个模块（源码均在 `src/`，另含一个数据契约模块）：
-1. **抓取 + API**（`src/fetcher.js` + `src/server.js`）：**纯 Node 直接模拟 x.com 的 GraphQL 请求**（不依赖任何浏览器/调试 Edge），经本机 SOCKS5 代理出网，游标翻页入库；对外提供 HTTP API，`/api/sync` 按需实时刷新，日常浏览只读本地文件库。
+1. **抓取 + API**（`src/fetcher.js` + `src/server.js`）：默认**经已登录调试 Edge (CDP) 直接重放 Bookmarks GraphQL 请求**（复用浏览器已登录会话，无需 cookies.json）；另保留纯 Node 代理传输作为备用（被 x.com TLS 指纹封锁，本环境不可用）。对外提供 HTTP API，`/api/sync` 按需实时刷新，日常浏览只读本地文件库。
 2. **文件库 + 数据结构**（`src/store.js` + `src/normalize.js` + `data/`）：帖子以 JSONL 存储，按 `id` 去重、append-only；`meta.json` 记录计数与时间范围；`normalize.js` 统一定义库内 schema（原始节点→规范化），fetcher 复用。
 3. **README**（本文件）：项目设计。
 4. **浏览入口**（`public/index.html` + `src/server.js` + `public/virtual-scroll.js`）：虚拟滚动浏览全量书签（`loadAll()` 一次性拉全量，由 `VirtualList` 接管滚动）；按发布时间跳转高亮；视口顶部帖子持久化到 localStorage（见「全量加载」一节）。
@@ -38,29 +38,30 @@ public/index.html ──无限滚动 + 按时间跳转──► 浏览器
 ├─ src/                 # 所有模块源码（按模块拆分）
 │  ├─ store.js          # 模块2：文件库（jsonl + meta）、去重、分页、时间定位
 │  ├─ normalize.js      # 模块2：数据结构（原始节点 → 统一 schema，fetcher 复用）
-│  ├─ fetcher.js        # 模块1：纯 Node + SOCKS5 代理抓取 → 规范化 → 翻页入库（不依赖浏览器）
+│  ├─ fetcher.js        # 模块1：抓取（CDP 默认 / 纯 Node 备用）双传输 → 规范化 → 翻页入库
+│  ├─ cdp-fetch.js      # 传输层 B：经调试 Edge (CDP) 重放 GraphQL 分页接口
 │  └─ server.js         # 模块1+4：HTTP API + 静态托管（浏览入口）
-├─ public/index.html    # 模块4：浏览前端（无限滚动 + 时间跳转）
-├─ bookmarks_params.json / cookies.json  # 接口参数 / 会话密钥（见下）
+├─ public/index.html    # 模块4：浏览前端（虚拟滚动 + 时间跳转）
+├─ bookmarks_params.json / cookies.json  # 仅供「纯 Node 备用传输」使用的接口参数 / 会话密钥（见下）
 ├─ data/
-│  ├─ bookmarks.jsonl   # 每行一条规范化帖子（当前为空：上次会话清空，需代理在线后 /api/sync 重抓；设计容量 1000+ 条真实书签）
+│  ├─ bookmarks.jsonl   # 每行一条规范化帖子（当前 3604 条真实书签，2026-08-07 全量重同步落盘）
 │  └─ meta.json         # 计数 / 时间范围 / 最近同步
 └─ README.md
 ```
 
-> `fetcher.js` 默认读取**项目根目录**的 `bookmarks_params.json`（接口参数）
-> 与 `cookies.json`（会话密钥，含 `ct0`）。这两个文件来自之前的接口分析，需自行准备（已随项目放在 `git-database/` 根目录）。
+> **cookies.json / bookmarks_params.json 仅「纯 Node 备用传输」需要**：CDP（默认）传输复用调试 Edge 里已登录的 x.com 会话，不读取这两个文件。纯 Node 模式才需要它们（且当前被 x.com TLS 指纹封锁，实际不可用）。
 
 ---
 
 ## 运行
 
-### 0. 前置：本机 SOCKS5 代理（一次性，无需浏览器）
-抓取是**纯 Node**，但 x.com 在大陆直连不可达，必须由本机 SOCKS5 代理出网（如 Clash，默认 `127.0.0.1:7890`）。
-> **代理是硬性要求**：`/api/sync` 经 `127.0.0.1:7890`（可用环境变量 `SOCKS_PROXY` / `HTTPS_PROXY` 覆盖）与 x.com 建隧道。
-> **请确认 Clash 的节点/TUN 在线且能访问外网**，否则同步会快速失败，报错形如
-> `无法与 x.com 建立连接（…）。多半是本地代理 … 的上游已离线——请确认 Clash/代理已启动…`。
-> 日常浏览（读本地库、前端渲染）**不需要**代理；仅 `/api/sync` 需要。
+### 0. 前置：调试 Edge + Clash 代理
+
+`/api/sync` 默认走 CDP 传输，**需要调试 Edge 在线且已登录 x.com**：
+- 启动调试 Edge（默认 `127.0.0.1:9222`，独立 profile），例如用 `edge-debug-browser` 技能的
+  `launch-edge-debug.ps1` 并带上 `-Proxy 127.0.0.1:7890`（让 Edge 经 Clash 访问 x.com）。
+- **Clash 代理需在线**：Edge 通过它访问 x.com；代理离线则同步返回 `200+{ok:false, error}`（提示代理离线）。
+- 日常浏览（读本地库、前端渲染）**不需要**代理或 Edge；仅 `/api/sync` 需要。
 
 ### 1. 安装依赖 & 启动服务（pnpm）
 ```bash
@@ -71,15 +72,17 @@ pnpm start        # node src/server.js → http://localhost:3000
 > 本机可用命令：`pnpm start` / `pnpm dev` / `pnpm sync`。
 > 若 PowerShell 中 `pnpm` 不可用，可用 `corepack pnpm@9 <cmd>` 代替（pnpm 经 corepack 安装）。
 
-### 2. 首次同步（抓取并入库）
-浏览器打开 `http://localhost:3000` → 点「同步书签」（即 `POST /api/sync`），
+### 2. 同步（抓取并入库）
+浏览器打开 `http://localhost:3000` → 点「同步书签」（即 `POST /api/sync`，默认 CDP 增量），
 或命令行：
 ```bash
-pnpm sync                  # 等价于 node -e "require('./src/fetcher').sync()..."
+pnpm sync                  # 等价于 node -e "require('./src/fetcher').sync({transport:'cdp'})"
 # 或
 curl -X POST http://localhost:3000/api/sync
 ```
-同步会翻页抓取整页书签，按 `id` 去重写入 `data/bookmarks.jsonl`。可多次同步，只追加新的。
+- **增量同步**（默认，`fetcher.sync`）：从最新收藏页往前翻，碰到「本地已同步边界」即停，只把新收藏 `append` 进 `jsonl`（index 续接当前 seq，最新=最大）。日常新增收藏用这个，秒级。
+- **全量重同步**（`fetcher.resync` / `resync-retry.js --cdp`）：清空重抓整个集合，`replaceAll` 一次性整体落盘（最旧收藏=index 1）。仅在数据损坏 / 隔很久没同步 / 想重排 index 时用。
+- 在 x.com 上**取消收藏**不会从 `jsonl` 删除旧条目（增量是 append-only），需全量 `resync` 才能剔除。
 
 ### 3. 浏览
 - **虚拟滚动（全量加载）**：`loadAll()` 一次性拉取全部书签（分页 `limit=100` 累加到内存数组 `allItems`），交由 `public/virtual-scroll.js` 的 `VirtualList` 接管滚动、仅渲染可视区（上下各 10 条 overscan）。详见下方「全量加载」一节。
@@ -93,9 +96,9 @@ curl -X POST http://localhost:3000/api/sync
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/bookmarks?cursor=0&limit=20` | 分页读取（按 `created_at` 倒序），返回 `{items, nextCursor, total}` |
-| GET | `/api/bookmarks/find?at=YYYY-MM-DD&by=created_at` | 时间定位，返回 `{offset, post}`（offset 用于前端滚动）；`by` 默认 `created_at` |
+| GET | `/api/bookmarks/find?at=YYYY-MM-DD&by=created_at` | 时间定位，返回 `{offset, post}`（offset 用于前端滚动）；`by` 默认 `created_at`，亦可 `index`（`bookmarked_at` 已弃用，无数据） |
 | GET | `/api/meta` | 库统计 `{count, minCreatedAt, maxCreatedAt, lastSync}` |
-| POST | `/api/sync` | 纯 Node 经 SOCKS5 代理实时抓 x.com 书签并入库，返回 `{ok, added, seen, pages, total}`（失败为 `200 + {ok:false, error}`） |
+| POST | `/api/sync` | 默认经 CDP（调试 Edge 在线）实时重放抓取并增量入库，返回 `{ok, added, seen, pages, total, seq, reachedExisting}`（失败为 `200 + {ok:false, error}`） |
 
 ---
 
@@ -136,10 +139,10 @@ curl -X POST http://localhost:3000/api/sync
 
 | 模块 | 状态 | 方法 |
 |------|------|------|
-| store.js 文件库 | ⚠️ 逻辑通过、数据待恢复 | append 去重、page 分页、findByTime 定位逻辑均经单测/手工验证；但 `data/bookmarks.jsonl` 当前为空（需代理在线后 `/api/sync` 重抓 1000+ 条）。 |
-| server.js HTTP API | ✅ 逻辑 | curl 验证分页 `/api/bookmarks?cursor=0&limit=`、`/api/bookmarks/find?at=` 时间定位（offset 精确）、未来日期返回 offset=0；`/api/meta` 当前因库空返回 `count:0`，同步后回升。 |
-| fetcher.js 抓取 | ⚠️ 代码正确，待代理恢复实跑 | 纯 Node + SOCKS5 代理隧道 + TLS 已验证可建立隧道（与 curl 表现一致）；请求构造、头部、时间线解析、翻页均已单测通过。当前 Clash 代理**上游离线**导致 `/api/sync` 返回 `200+{ok:false, error}`（明确提示代理离线，非 500）。代理恢复后 `POST /api/sync` 即可实时抓取。此前已成功抓取过 1000+ 条真实书签。 |
-| public/index.html 前端 | ✅ 逻辑 | 虚拟滚动接管、时间跳转（2026-07-25 → offset 高亮）、灯箱、实体链接渲染、视口 localStorage 恢复均已验证；库空时仅显示「共 0 条」，需数据恢复后观感复验。 |
+| store.js 文件库 | ✅ 已落盘 | `data/bookmarks.jsonl` 现 3604 条真实书签（2026-08-07 全量重同步）；append 去重、page 分页、findByTime 定位逻辑均验证通过。 |
+| server.js HTTP API | ✅ 验证 | curl 验证 `/api/bookmarks` 分页、`/api/bookmarks/find?at=` 时间定位（offset 精确）、未来日期返回 offset=0；`/api/meta` 返回 `count:3604`。 |
+| fetcher.js 抓取（CDP） | ✅ 实跑通过 | 调试 Edge 经 Clash 代理访问 x.com；direct GraphQL replay 实测翻到 3604 条互不相同书签、在干净 `200 / 空页` 处自然结束（全程零 429）。增量 `sync` 实测 `pages:1` 早停（已同步边界）、`added=0`、磁盘零改动。 |
+| public/index.html 前端 | ✅ 验证 | 虚拟滚动接管、时间跳转（按 `created_at`）高亮、灯箱、实体链接渲染、视口 localStorage 恢复均验证；3604 条全量加载顺畅。 |
 
 截图佐证：`frontend_view.png`（初始视图）、`frontend_jump.png`（跳转后视图）
 
@@ -147,14 +150,14 @@ curl -X POST http://localhost:3000/api/sync
 
 ## 已知限制
 
-- **`/api/sync` 需要本机 SOCKS5 代理可达**：纯 Node 直连 x.com 被墙，必须经由本机 SOCKS5 代理（如 Clash，默认 `127.0.0.1:7890`，可用 `SOCKS_PROXY` 覆盖）出网；代理不通则同步返回 `200+{ok:false, error}`（提示代理离线）。**不再依赖任何浏览器/调试 Edge**。
-- **可能需 `x-client-transaction-id`**：x.com 部分接口会校验该头（浏览器自动带，纯 Node 不自带）。若代理恢复后 `/api/sync` 返回 403/特定错误，需在 `fetcher.js` 补一个 transaction-id 生成逻辑（社区有成熟算法），届时可据返回的错误片段补上。
-- **日常浏览不依赖代理**：读本地文件库（`/api/bookmarks`、`/api/bookmarks/find`）与前端渲染都不需要代理，仅图片/视频走 `pbs.twimg.com` CDN（该 CDN 直连可达，无需代理）。
-- **queryId 轮换**：`bookmarks_params.json` 里的 `query_id` 会随 x.com 前端更新而轮换；若同步报 `errors`，需重新从 x.com JS bundle 抓取最新 `queryId`（或参考 x-reader 自动发现）。
+- **`/api/sync` 需要调试 Edge (9222) 在线且已登录 x.com**：默认 CDP 传输复用浏览器会话；Edge 经 Clash 代理（默认 `127.0.0.1:7890`）访问 x.com。代理离线或 Edge 未运行则同步返回 `200+{ok:false, error}`（明确提示，非 500）。纯 Node 传输被 x.com TLS 指纹封锁，本环境不可用。
+- **`x-client-transaction-id` 由浏览器自动带**：CDP 模式重放时复用首屏请求的 `x-client-transaction-id`，无需 Node 端生成。仅当回到纯 Node 传输时才需补 transaction-id 生成逻辑（社区有成熟算法）。
+- **日常浏览不依赖代理/Edge**：读本地文件库（`/api/bookmarks`、`/api/bookmarks/find`）与前端渲染都不需要，仅图片/视频走 `pbs.twimg.com` CDN（该 CDN 直连可达，无需代理）。
+- **queryId 轮换（仅纯 Node 模式相关）**：`bookmarks_params.json` 里的 `query_id` 会随 x.com 前端更新而轮换；CDP 模式直接复用浏览器真实请求，不受此影响。
 - **不存真实收藏时间**：x.com 的 Bookmarks 接口不返回每条收藏时刻，库内不存 `bookmarked_at`，统一以 `created_at`（发布时间）作为时间跳转与排序基准；`index` 作为稳定序号。
 - **头像可能缺失**：部分书签节点的作者对象不含头像字段，此时卡片不显示头像。
 - **媒体仅存 URL**：图片/视频以 `pbs.twimg.com` 链接形式保存，浏览时由浏览器直连 CDN 加载，未做本地缓存。
-- **`cookies.json` 含会话密钥**：请妥善保管，不再使用时删除。
+- **`cookies.json` 含会话密钥**：仅供纯 Node 模式，请妥善保管，不再使用时删除。
 
 ---
 
@@ -165,9 +168,9 @@ curl -X POST http://localhost:3000/api/sync
 ### 为什么必须全量加载
 虚拟滚动（`VirtualList`）依赖**全量数据**才能用内部 `layer` 撑出完整滚动条、为每条帖子计算滚动偏移。`loadAll()` 通过 `limit=100` 分页把全部帖拉进内存数组 `allItems`，再一次性交给虚拟列表。这是虚拟滚动的固有前提，并非性能取舍——**只要用固定滚动条 + 绝对定位复用 DOM 的虚拟滚动方案，就无法回避全量数据**。
 
-### 当前量级（~1000 条）是否合理
+### 当前量级（3604 条）是否合理
 **合理，推荐保持。** 依据：
-- 文本量小：1000 条规范化帖约 1–3 MB JSON，单次 fetch + 解析在毫秒级；内存中仅渲染可视区约 ~30 条 DOM，其余按 `id` 复用，占用极低。
+- 文本量小：3604 条规范化帖约数 MB JSON，单次 fetch + 解析在毫秒级；内存中仅渲染可视区约 ~30 条 DOM，其余按 `id` 复用，占用极低。
 - 体验更稳：所有 offset 在服务端已知，时间跳转（`/api/bookmarks/find` 算 offset → `scrollToIndex`）与「恢复上次视口顶部」都不依赖滚动中异步补数据，无游标漂移、无滚动中段白屏。
 - 带宽可控：卡片图片走 `pbs.twimg.com` CDN 且 `loading="lazy"`，不会一次性请求上千张图。
 
@@ -185,12 +188,12 @@ curl -X POST http://localhost:3000/api/sync
 
 | # | 项目 | 状态 | 说明 / 触发条件 |
 |---|------|------|----------------|
-| 1 | **本地书签库为空，需重抓** | 🔴 待做 | 当前 `data/bookmarks.jsonl` 为空（上次会话清空/未重新同步）。需 Clash 代理在线后 `POST /api/sync` 全量重抓以恢复 1000+ 条真实书签；同步后 `meta.json` 的 `count` 自动回升。 |
-| 2 | 代理恢复 + 实抓验证 | ⚠️ 阻塞于环境 | fetcher 代码已单测通过，但 Clash 上游离线导致 `/api/sync` 返回 `200+{ok:false}`。代理在线即可实跑。 |
-| 3 | `x-client-transaction-id` | ⚠️ 条件触发 | 若代理恢复后同步仍 403，需在 `fetcher.js` 补 transaction-id 生成逻辑（浏览器自动带，纯 Node 不自带）。 |
-| 4 | `queryId` 轮换 | ⚠️ 条件触发 | `bookmarks_params.json` 的 `query_id` 会随 x.com 前端更新而轮换；同步报 `errors` 时需重新抓取最新 queryId。 |
-| 5 | `cookies.json` 会话密钥 | 🟡 安全 | 含 `ct0` 等密钥，不再使用时删除（已 gitignore）。 |
-| 6 | 旧 temp 目录 `D:\Workspace\workbuddy\x-bookmarks` | 🟡 清理 | 早期临时副本，确认 `git-database` 为主后删除。 |
-| 7 | 大数据量优化（IndexedDB + 区间分页） | ⚪ 未来 | 仅当书签 > ~10k 时再做（见「全量加载」一节），当前 1000 量级无需。 |
+| 1 | 全量重同步恢复书签库 | ✅ 已完成 | 2026-08-07 经 CDP 全量重同步，`data/bookmarks.jsonl` 落盘 3604 条真实书签，`meta.json` 的 `count` 同步回升。 |
+| 2 | CDP 抓取实跑验证 | ✅ 已完成 | 调试 Edge + Clash 代理通道打通，direct GraphQL replay 翻到 3604 条且自然结束（零 429）。 |
+| 3 | `x-client-transaction-id` | 🟢 已由 CDP 解决 | CDP 复用浏览器首屏请求的 transaction-id，纯 Node 才需补生成逻辑（当前纯 Node 被封、走不到）。 |
+| 4 | `queryId` 轮换 | 🟢 CDP 不受影响 | CDP 直接复用浏览器真实请求；仅纯 Node 备用模式需从 JS bundle 重抓 queryId。 |
+| 5 | `cookies.json` 会话密钥 | 🟡 安全 | 含 `ct0` 等密钥，不再使用时删除（已 gitignore）；CDP 模式不读取。 |
+| 6 | 旧 temp 目录 / 诊断脚本 | ✅ 已清理 | 早期临时副本与 `_diag_*`/`_probe_*`/`_obsolete_diag` 诊断产物已删除。 |
+| 7 | 大数据量优化（IndexedDB + 区间分页） | ⚪ 未来 | 仅当书签 > ~10k 时再做（见「全量加载」一节），当前 3604 量级无需。 |
 
-> 以上 1–4 均依赖「本机 SOCKS5 代理在线」这一前置条件；5–7 与代理无关。
+> 说明：以上 1–4 依赖「调试 Edge 在线 + Clash 代理可达」这一前置条件；5–7 与代理无关。

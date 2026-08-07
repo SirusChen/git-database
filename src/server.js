@@ -1,7 +1,7 @@
 /**
  * server.js — 模块 1 + 4：HTTP 服务 / 浏览入口
- *   GET  /api/bookmarks            ?cursor=0&limit=20   读文件库，分页（按 bookmarked_at 倒序）
- *   GET  /api/bookmarks/find       ?at=YYYY-MM-DD       定位首个 bookmarked_at<=该日末尾的帖子 offset
+ *   GET  /api/bookmarks            ?cursor=0&limit=20   读文件库，分页（按 created_at 倒序）
+ *   GET  /api/bookmarks/find       ?at=YYYY-MM-DD       定位首个 created_at<=该日末尾的帖子 offset
  *   GET  /api/meta                                   库统计
  *   POST /api/sync                                  经 CDP 实时抓 x.com 书签并入库（需调试 Edge 在线）
  *   静态 /  -> public/index.html
@@ -42,7 +42,7 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/api/bookmarks/find') {
       const at = u.searchParams.get('at');           // YYYY-MM-DD
       if (!at) return send(res, 400, { error: 'missing at=YYYY-MM-DD' });
-      const by = u.searchParams.get('by') || 'created_at';   // created_at | bookmarked_at
+      const by = u.searchParams.get('by') || 'created_at';   // created_at | index（bookmarked_at 已弃用，无数据）
       const endOfDay = at + 'T23:59:59.999Z';
       return send(res, 200, store.findByTime(endOfDay, by));
     }
