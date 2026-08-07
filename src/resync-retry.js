@@ -47,7 +47,7 @@ function ts() { return new Date().toISOString(); }
       if (useCdp) {
         // CDP 传输：resync 内部自行探测（首屏抓不到即视为离线），无需单独的 probeConnection
         console.error(`[resync-retry] 尝试 CDP 全量同步 (第${attempt}/${RETRY_MAX}次) @ ${ts()}`);
-        const result = await fetcher.resync({ transport: 'cdp', pageDelayMs });
+        const result = await fetcher.resync({ transport: 'cdp', pageDelayMs, betweenPageMs: pageDelayMs || 1500, firstPageMs: Number(process.env.FIRST_PAGE_MS) || 30000 });
         console.error(`[resync-retry] <<< resync(cdp) 完成:`, JSON.stringify(result));
         process.exit(0);
       } else {

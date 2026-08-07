@@ -295,15 +295,18 @@ async function resync(opts = {}) {
   const firstPageMs = opts.firstPageMs != null ? opts.firstPageMs : 12000;
   const betweenPageMs = opts.betweenPageMs != null ? opts.betweenPageMs : (pageDelayMs || 5000);
 
-  let params, cookies;
-  try { params = JSON.parse(fs.readFileSync(PARAMS_PATH, 'utf8')); }
-  catch (e) { throw new Error('读取 bookmarks_params.json 失败（' + e.message + '）：请先准备好抓取参数文件'); }
-  try { cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8')); }
-  catch (e) { throw new Error('读取 cookies.json 失败（' + e.message + '）：请先放置有效的 x.com Cookie（可用 edge-debug-browser 导出）'); }
-  const ct0c = cookies.find(c => c.name === 'ct0');
-  if (!ct0c) throw new Error('cookies.json 缺少 ct0 字段（Cookie 可能已过期或格式不对）');
-  const cookieHeader = buildCookieHeader(cookies);
-  const proxy = proxyConfig();
+  let params, cookies, cookieHeader, proxy;
+  if (transport !== 'cdp') {
+    // 纯 Node 传输需要 params / cookies / proxy；CDP 传输复用已登录浏览器的会话，不需要这些文件
+    try { params = JSON.parse(fs.readFileSync(PARAMS_PATH, 'utf8')); }
+    catch (e) { throw new Error('读取 bookmarks_params.json 失败（' + e.message + '）：请先准备好抓取参数文件'); }
+    try { cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8')); }
+    catch (e) { throw new Error('读取 cookies.json 失败（' + e.message + '）：请先放置有效的 x.com Cookie（可用 edge-debug-browser 导出）'); }
+    const ct0c = cookies.find(c => c.name === 'ct0');
+    if (!ct0c) throw new Error('cookies.json 缺少 ct0 字段（Cookie 可能已过期或格式不对）');
+    cookieHeader = buildCookieHeader(cookies);
+    proxy = proxyConfig();
+  }
 
   // 累积「原始 GraphQL 节点」（API 返回顺序：首屏=最新收藏，Bottom=更早）
   let rawNodes = [];
