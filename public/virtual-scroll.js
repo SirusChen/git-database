@@ -262,6 +262,40 @@
       };
     }
 
+    /**
+     * 读取当前「浏览位置锚点」：视口顶部的第一个可见项 + 相对该帖顶部的像素偏移。
+     * 与 getScrollInfo().startIndex 不同 —— 后者是含 overscan 缓冲的渲染窗口起点，
+     * 会向上偏移最多 overscan 条；本方法返回的是真正贴着视口顶部的那条，用于精准记忆位置。
+     * @returns {{index:number, offset:number}} index<0 表示无数据
+     */
+    getScrollAnchor() {
+      const n = this.items.length;
+      if (n === 0) return { index: -1, offset: 0 };
+      const st = this.viewport.scrollTop;
+      const idx = this._firstIndexForY(st);
+      const offset = Math.max(0, st - this.positions[idx]);
+      return { index: idx, offset };
+    }
+
+    /**
+     * 滚动恢复到指定锚点（index 顶部 + 像素偏移），用于「重新打开时还原浏览位置」。
+     * 所有高度计算都在模块内部完成，调用方无需关心 positions。
+     * @param {{index:number, offset?:number}} anchor
+     * @param {boolean} [smooth]
+     */
+    scrollToAnchor(anchor, smooth = false) {
+      const n = this.items.length;
+      if (n === 0 || !anchor || anchor.index == null) return;
+      let index = anchor.index | 0;
+      if (index < 0 || index >= n) return;
+      const offset = anchor.offset || 0;
+      const vh = this.viewport.clientHeight || 1;
+      const target = Math.max(0, Math.min(this.totalHeight - vh, this.positions[index] + offset));
+      this.viewport.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'auto' });
+      // scroll 事件会触发 _render；这里立即渲染一次，保证恢复后内容同步可见
+      this._render();
+    }
+
     // 高度可能整体变化(如切换主题/字体)时调用，重置估算并整页重测
     refresh() {
       for (let i = 0; i < this.items.length; i++) this.heights[i] = this.estimateHeight;

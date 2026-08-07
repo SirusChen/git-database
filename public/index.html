@@ -162,39 +162,39 @@ const vlist = new VirtualList({
   }
 });
 
-// ---- 视口顶部帖子持久化(localStorage) ----
-// 记录视口中的第一个帖子(顶部可见项)，离开/滚动时缓存；初始化时从这里恢复。
-const LS_TOP = 'xbook:topPost';
-function topPostState() {
-  const info = vlist.getScrollInfo();
-  const post = vlist.getItem(info.startIndex);
-  return post ? { id: post.id, index: info.startIndex } : null;
+// ---- 浏览位置持久化(localStorage) ----
+// 记录「视口顶部锚点」：第一个可见帖子的 id + 它在数据中的 index + 相对该帖顶部的像素偏移。
+// 离开/滚动时缓存；初始化(打开入口)时从这里精确恢复。
+// 锚定 id 而非纯 index：每次全量 resync 会重排 index，但帖子 id 稳定，故按 id 定位最可靠。
+const LS_POS = 'xbook:scrollPos';
+function saveScrollPos() {
+  const a = vlist.getScrollAnchor();          // { index, offset }，基于真实可见项(不含 overscan 缓冲)
+  if (!a || a.index < 0) return;
+  const post = vlist.getItem(a.index);
+  if (!post) return;
+  const state = { id: post.id, index: a.index, offset: Math.round(a.offset) };
+  try { localStorage.setItem(LS_POS, JSON.stringify(state)); } catch (e) {}
 }
-function saveTopPost() {
-  const s = topPostState();
-  if (!s) return;
-  try { localStorage.setItem(LS_TOP, JSON.stringify(s)); } catch (e) {}
-}
-function restoreTop() {
+function restoreScrollPos() {
   let raw;
-  try { raw = localStorage.getItem(LS_TOP); } catch (e) { return; }
+  try { raw = localStorage.getItem(LS_POS); } catch (e) { return; }
   if (!raw) return;
   let saved;
   try { saved = JSON.parse(raw); } catch (e) { return; }
   // 优先按 id 定位(数据重排后仍准确)，回退到 index
   let idx = (saved.id != null) ? allItems.findIndex(p => p.id === saved.id) : -1;
   if (idx < 0 && saved.index != null && saved.index >= 0 && saved.index < allItems.length) idx = saved.index;
-  if (idx >= 0) vlist.scrollToIndex(idx, 'start');
+  if (idx >= 0) vlist.scrollToAnchor({ index: idx, offset: saved.offset || 0 });
 }
-// 滚动时节流保存(顶部帖子变化才写，避免每次像素滚动都写)
+// 滚动时节流保存(每 400ms 最多写一次)
 let _saveTimer = 0;
 viewport.addEventListener('scroll', () => {
   if (_saveTimer) return;
-  _saveTimer = setTimeout(() => { _saveTimer = 0; saveTopPost(); }, 400);
+  _saveTimer = setTimeout(() => { _saveTimer = 0; saveScrollPos(); }, 400);
 }, { passive: true });
 // 离开页面/隐藏标签页时确保落盘
-window.addEventListener('pagehide', saveTopPost);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTopPost(); });
+window.addEventListener('pagehide', saveScrollPos);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveScrollPos(); });
 
 // ---- 一次性加载全部书签（虚拟滚动需要全量数据来撑滚动条 & 算偏移；详见 README「全量加载」一节）----
 //  当前 ~1000 条量级下全量拉取合理：文本量小（1–3MB）、无游标漂移、跳转/恢复视口更稳、图片走 CDN 懒加载不占带宽。
@@ -215,7 +215,7 @@ async function loadAll() {
       if (++pages > 500) break;
     }
     vlist.setItems(allItems);
-    restoreTop();           // 从 localStorage 恢复上次视口顶部帖子
+    restoreScrollPos();     // 从 localStorage 恢复上次浏览位置
     statusEl.textContent = '';
   } catch (e) {
     statusEl.textContent = '加载失败: ' + e.message;
