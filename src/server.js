@@ -15,6 +15,10 @@ const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const fetcher = require('./fetcher');
+const imageStates = require('./image-states');
+const templates = require('./templates');
+const imageCache = require('./image-cache');
+const { XiaohongshuPublisher } = require('./xhs-cdp-publish');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = process.env.PORT || 3000;
@@ -29,6 +33,19 @@ function sendFile(res, fp) {
   const ext = path.extname(fp);
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
   fs.createReadStream(fp).pipe(res);
+}
+
+/** 读取请求体（JSON 用），返回字符串 */
+function readBody(req, limit = 1e6) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > limit) { req.destroy(); reject(new Error('请求体过大')); }
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -55,6 +72,74 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, ...r });
       } catch (e) {
         // 同步失败（如调试 Edge 未运行 / Cookie 过期）属可预期情况，返回 ok:false + 清晰错误，避免裸 500
+        return send(res, 200, { ok: false, error: String(e && e.message || e) });
+      }
+    }
+    if (u.pathname === '/api/image-states') {
+      return send(res, 200, imageStates.readAll());
+    }
+    if (u.pathname === '/api/image-state' && req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const { base, action } = JSON.parse(body || '{}');
+        if (!base) return send(res, 400, { ok: false, error: 'missing base' });
+        let r;
+        if (action === 'favorite') r = imageStates.setFavorite(base, true);
+        else if (action === 'unfavorite') r = imageStates.setFavorite(base, false);
+        else r = imageStates.toggleFavorite(base); // 默认 toggle
+        return send(res, 200, { ok: true, ...r });
+      } catch (e) {
+        return send(res, 400, { ok: false, error: String(e && e.message || e) });
+      }
+    }
+    if (u.pathname === '/api/favorite-posts') {
+      // 反查：所有「含至少一张被收藏图片」的帖子（不依赖 resync，状态在 image-states.json）
+      const bases = new Set(imageStates.getFavoritedBases());
+      const c = store.load();
+      const items = c.items.filter((p) => (p.media || []).some((m) => {
+        const base = (m.url || m.thumb || '').replace(/:\w+$/, '');
+        return bases.has(base);
+      }));
+      return send(res, 200, { items, total: items.length });
+    }
+    if (u.pathname === '/api/templates') {
+      if (req.method === 'GET') return send(res, 200, { items: templates.list() });
+      if (req.method === 'POST') {
+        try {
+          const body = JSON.parse(await readBody(req) || '{}');
+          if (body.action === 'delete') {
+            templates.remove(body.id);
+            return send(res, 200, { ok: true });
+          }
+          const tpl = templates.save(body);
+          return send(res, 200, { ok: true, template: tpl });
+        } catch (e) {
+          return send(res, 400, { ok: false, error: String(e && e.message || e) });
+        }
+      }
+    }
+    if (u.pathname === '/api/publish' && req.method === 'POST') {
+      try {
+        const body = JSON.parse(await readBody(req) || '{}');
+        const { imageUrl, title, content, tags, aiDeclaration } = body;
+        if (!imageUrl) return send(res, 400, { ok: false, error: 'missing imageUrl' });
+        const base = (String(imageUrl).replace(/:\w+$/, '')).split('?')[0];
+        const localPath = await imageCache.downloadToTemp(imageUrl);
+        const publisher = new XiaohongshuPublisher({ port: Number(process.env.XHS_CDP_PORT || 9222) });
+        const r = await publisher.publish({
+          imagePath: localPath,
+          title: title || '',
+          content: content || '',
+          tags: Array.isArray(tags) ? tags : [],
+          aiDeclaration: !!aiDeclaration,
+        });
+        let published = false;
+        if (r.published && r.url) {
+          imageStates.markPublished(base, { title: title || '', content: content || '', tags: Array.isArray(tags) ? tags : [], url: r.url });
+          published = true;
+        }
+        return send(res, 200, { ok: r.published, published, ...r });
+      } catch (e) {
         return send(res, 200, { ok: false, error: String(e && e.message || e) });
       }
     }

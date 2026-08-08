@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>X 书签浏览器</title>
+<title>收藏帖子 · X 书签</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -19,7 +19,6 @@
   input[type=date] { background:#192734; color:#e7e9ea; border:1px solid #38444d; border-radius:8px; padding:7px 10px; font-size:13px; }
   button { background:#1d9bf0; color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; }
   button.ghost { background:#192734; color:#e7e9ea; border:1px solid #38444d; }
-  button:disabled { opacity:.5; cursor:default; }
   #status { font-size:12px; color:#8b98a5; min-width:120px; }
 
   #viewport { flex:1; overflow-y:auto; overflow-x:hidden; padding:16px 14px 80px; position:relative; }
@@ -52,14 +51,13 @@
 </head>
 <body>
 <header>
-  <h1>X 书签浏览器</h1>
+  <h1>收藏帖子</h1>
   <span class="total" id="total">加载中…</span>
   <div class="spacer"></div>
   <input type="date" id="jumpDate" title="跳转到该日期附近发布的帖子（按发布时间）">
   <button class="ghost" id="jumpBtn">跳转</button>
-  <button class="ghost" id="favBtn" title="仅看收藏帖子">收藏</button>
-  <button class="ghost" id="syncBtn">同步书签</button>
   <button id="topBtn">回到顶部</button>
+  <button class="ghost" id="backBtn">← 返回全部</button>
   <span id="status"></span>
 </header>
 
@@ -73,7 +71,6 @@ const viewport = document.getElementById('viewport');
 const statusEl = document.getElementById('status');
 const totalEl = document.getElementById('total');
 
-// 收藏/已发状态缓存（灯箱实时查询）
 let imgStates = {};
 async function loadStates() {
   try { imgStates = await (await fetch('/api/image-states')).json(); } catch (e) { imgStates = {}; }
@@ -92,32 +89,17 @@ const lb = Lightbox.create({
   },
 });
 
+// 与 index.html 同构：复用卡片渲染/虚拟滚动/灯箱；唯一差异：独立滚动 key + 独立数据源
 const g = Gallery.setup({
   viewport, statusEl, totalEl,
-  scrollKey: 'xbook:scrollPos',
-  endpoint: '/api/bookmarks',
+  scrollKey: 'xbook:scrollPos:favorites',
+  endpoint: '/api/favorite-posts',
   lightbox: lb,
 });
 
 document.getElementById('jumpBtn').onclick = () => g.jump(document.getElementById('jumpDate').value);
 document.getElementById('topBtn').onclick = () => g.vlist.scrollToTop();
-document.getElementById('favBtn').onclick = () => { window.location.href = '/favorites.html'; };
-
-document.getElementById('syncBtn').onclick = async () => {
-  const btn = document.getElementById('syncBtn');
-  btn.disabled = true; statusEl.textContent = '正在从 x.com 抓取…';
-  try {
-    const r = await fetch('/api/sync', { method: 'POST' });
-    const data = await r.json();
-    if (data.ok) {
-      statusEl.textContent = `同步完成：新增 ${data.added} / 本次见 ${data.seen} / 共 ${data.total}`;
-      await g.loadAll();
-    } else {
-      statusEl.textContent = '同步失败: ' + (data.error || '未知');
-    }
-  } catch (e) { statusEl.textContent = '同步失败: ' + e.message; }
-  finally { btn.disabled = false; }
-};
+document.getElementById('backBtn').onclick = () => { window.location.href = '/'; };
 
 (async () => { await loadStates(); await g.loadAll(); })();
 </script>
