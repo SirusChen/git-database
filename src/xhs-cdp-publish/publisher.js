@@ -10,6 +10,7 @@
  */
 
 const path = require('path');
+const os = require('os');
 const { CDPClient, sleep } = require('./cdp-client');
 
 const DEFAULT_WAITS = {
@@ -130,12 +131,66 @@ class XiaohongshuPublisher {
       return { published: false, dryRun: true, preview: this.lastPreview };
     }
 
-    // 9) 发布
-    await client.clickByText('发布', { exact: true });
-    await sleep(w.afterPublish);
-    const url = await client.getUrl();
-    const published = url.includes('published=true') || url.includes('/publish/success');
+    // 9) 发布（小红书把按钮封装在 closed Shadow DOM 的 <xhs-publish-btn> 里，必须用 elementFromPoint 点击）
+    await sleep(600);
+    await client.clickPublishBtn();
+
+    // 轮询等待发布结果。成功信号通常是：页面离开编辑态 / 出现「发布成功」文案 / 跳转到笔记管理页。
+    let url = '';
+    let published = false;
+    let failShot = null;
+    let lastState = null;
+    const pollStart = Date.now();
+    const maxMs = 30000;
+    while (Date.now() - pollStart < maxMs) {
+      await sleep(500);
+      url = await client.getUrl();
+      const pageState = await client.evaluateFn(() => {
+        const txt = document.body ? document.body.innerText : '';
+        const dlg = document.querySelector('[role="dialog"]');
+        const dlgText = dlg ? dlg.innerText.replace(/\s+/g, ' ').trim() : '';
+        const host = document.querySelector('xhs-publish-btn');
+        return {
+          onEditor: location.href.includes('/publish/publish'),
+          onManager: location.href.includes('/new/note-manager'),
+          hasSuccess: txt.includes('发布成功') || txt.includes('发布完成') || txt.includes('笔记发布成功') || dlgText.includes('发布成功'),
+          hasConfirm: dlgText.includes('确认发布') || dlgText.includes('确定要发布') || txt.includes('确认发布'),
+          hasFail: txt.includes('发布失败') || txt.includes('无法发布') || txt.includes('请修改') || txt.includes('审核未通过'),
+          dlgText: dlgText.slice(0, 120),
+          submitLoading: host ? host.getAttribute('submit-loading') === 'true' : false,
+          hostExists: !!host,
+        };
+      });
+      lastState = pageState;
+
+      // 如果弹出「确认发布」二次确认框，点掉它（用户反馈正常流程没有，但保留兜底）
+      if (pageState.hasConfirm) {
+        for (const label of ['确认', '确定', '发布']) {
+          try { await client.clickByText(label, { exact: false, maxRetries: 2 }); break; } catch (e) {}
+        }
+        await sleep(500);
+        continue;
+      }
+
+      if (pageState.hasFail) {
+        throw new Error('小红书提示发布失败或被拦截：' + (pageState.dlgText || '页面含失败/审核提示'));
+      }
+
+      if (!pageState.onEditor || pageState.onManager || pageState.hasSuccess ||
+          (!pageState.hostExists && pageState.submitLoading)) {
+        published = true;
+        break;
+      }
+    }
+
+    url = await client.getUrl();
+    if (!published) {
+      try { failShot = await client.screenshot(path.join(os.tmpdir(), 'xhs_publish_fail_' + Date.now() + '.png')); } catch (e) {}
+    }
     await client.close();
+    if (!published) {
+      throw new Error('发布后未检测到成功页（当前URL: ' + url + '，最后状态: ' + JSON.stringify(lastState) + '）' + (failShot ? '，已截图: ' + failShot : ''));
+    }
     return { published, url, preview: this.lastPreview };
   }
 }

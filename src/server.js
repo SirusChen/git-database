@@ -140,7 +140,12 @@ const server = http.createServer(async (req, res) => {
         }
         return send(res, 200, { ok: r.published, published, ...r });
       } catch (e) {
-        return send(res, 200, { ok: false, error: String(e && e.message || e) });
+        // 把 AggregateError（如多地址连接重试全部失败）等底层错误展开为可读信息
+        let msg = (e && Array.isArray(e.errors) && e.errors.length)
+          ? e.errors.map((x) => (x && x.message) || String(x)).filter(Boolean).join('；')
+          : ((e && e.cause && e.cause.message) || (e && e.message) || String(e));
+        if (!msg) msg = '未知错误（无错误信息，请查看服务器控制台）';
+        return send(res, 200, { ok: false, error: msg });
       }
     }
     // 静态托管

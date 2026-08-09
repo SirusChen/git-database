@@ -215,61 +215,48 @@ class CDPClient {
   /**
    * 按可见文本点击（默认取 DOM 中最后一个匹配，避开导航栏同名项）。
    * 通过 scrollIntoView + getBoundingClientRect 取中心点，再派发可信鼠标事件。
-   * 匹配逻辑：可见、文本精确/包含匹配、且为最内层（无子元素也匹配）。
+   * 匹配逻辑：可见、文本精确/包含匹配（空白折叠 normalize）、且为最内层
+   * （无子元素也匹配该文本）；若最内层元素处于 disabled 状态则视为未就绪，
+   * 触发重试，直到按钮可点击。
    */
   async clickByText(text, { exact = true, last = true, maxRetries = 3 } = {}) {
-    // 先把目标滚到可视区域中部（内联过滤，无外部依赖）
-    await this.evaluateFn(
-      (text, exact, last) => {
-        const els = [...document.querySelectorAll('*')].filter((e) => {
-          if (!e.getClientRects().length) return false;
-          const t = e.textContent.trim();
-          if (exact ? t !== text : !t.includes(text)) return false;
-          if (
-            [...e.children].some((c) => {
-              const ct = c.textContent.trim();
-              return exact ? ct === text : ct.includes(text);
-            })
-          )
-            return false;
-          return true;
-        });
-        const el = last ? els[els.length - 1] : els[0];
-        if (el) el.scrollIntoView({ block: 'center' });
-      },
-      text,
-      exact,
-      last
-    );
+    // 浏览器侧使用的 normalize：折叠所有空白为单个空格并 trim（避免换行/多空格导致匹配失败）。
+    // 不使用正则，避免字符串字面量转义问题。
+    const normSrc =
+      "function norm(s){s=String(s==null?'':s);var out='';for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);out+=(c===9||c===10||c===13||c===32)?' ':s.charAt(i);}while(out.indexOf('  ')>0){out=out.split('  ').join(' ');}return out.trim();}";
+    const findExpr = (withRect) =>
+      normSrc +
+      "(function(){var nt=norm(" + JSON.stringify(text) + ");" +
+      "var els=[].slice.call(document.querySelectorAll('*')).filter(function(e){" +
+      "if(!e.getClientRects().length)return false;" +
+      "var t=norm(e.textContent);" +
+      "if(" + (exact ? "t!==nt" : "t.indexOf(nt)<0") + ")return false;" +
+      "if([].slice.call(e.children).some(function(c){var ct=norm(c.textContent);return " + (exact ? "ct===nt" : "ct.indexOf(nt)>=0") + ";}))return false;" +
+      "return true;});" +
+      "var el=" + (last ? "els[els.length-1]" : "els[0]") + ";" +
+      (withRect
+        ? "if(!el)return null;if(el.disabled||(el.closest&&el.closest('[disabled]')))return null;var r=el.getBoundingClientRect();if(r.width===0||r.height===0)return null;return {x:r.left+r.width/2,y:r.top+r.height/2};"
+        : "if(el)el.scrollIntoView({block:'center'});return !!el;") +
+      "})()";
+
+    // 先把目标滚到可视区域中部
+    await this.send('Runtime.evaluate', { expression: findExpr(false), awaitPromise: false, returnByValue: true });
     await sleep(250);
 
+    let lastErr = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const pt = await this.evaluateFn((text, exact, last) => {
-        const els = [...document.querySelectorAll('*')].filter((e) => {
-          if (!e.getClientRects().length) return false;
-          const t = e.textContent.trim();
-          if (exact ? t !== text : !t.includes(text)) return false;
-          if (
-            [...e.children].some((c) => {
-              const ct = c.textContent.trim();
-              return exact ? ct === text : ct.includes(text);
-            })
-          )
-            return false;
-          return true;
-        }).filter((e) => {
-          const r = e.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        });
-        const el = last ? els[els.length - 1] : els[0];
-        if (!el) return null;
-        const r = el.getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      }, text, exact, last);
-
+      const { result, exceptionDetails } = await this.send('Runtime.evaluate', {
+        expression: findExpr(true),
+        awaitPromise: false,
+        returnByValue: true,
+      });
+      if (exceptionDetails) lastErr = new Error('Runtime.evaluate 错误: ' + JSON.stringify(exceptionDetails));
+      const pt = result ? result.value : null;
       if (!pt) {
-        if (attempt === maxRetries - 1) throw new Error(`clickByText 未找到元素: ${text}`);
-        await sleep(300);
+        if (attempt === maxRetries - 1) {
+          throw new Error(`clickByText 未找到元素: ${text}` + (lastErr ? ` (${lastErr.message})` : ''));
+        }
+        await sleep(400);
         continue;
       }
       await this._mouseClick(pt.x, pt.y);
@@ -302,6 +289,41 @@ class CDPClient {
       await this._mouseClick(pt.x, pt.y);
       return pt;
     }
+  }
+
+  /**
+   * 点击小红书发布页的「发布」按钮。
+   * 该按钮被封装在 closed Shadow DOM 的自定义元素 <xhs-publish-btn> 中，
+   * clickByText / querySelector 都无法定位，只能通过 elementFromPoint 命中其可视区域。
+   */
+  async clickPublishBtn({ maxRetries = 5 } = {}) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const pt = await this.evaluateFn(() => {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        // 底部红色按钮常见位置：视口水平中心、底部偏上 35~75px 区域
+        const pts = [
+          [Math.round(vw / 2), Math.round(vh - 35)],
+          [Math.round(vw / 2), Math.round(vh - 55)],
+          [Math.round(vw / 2), Math.round(vh - 75)],
+          [Math.round(vw / 2) - 50, Math.round(vh - 35)],
+          [Math.round(vw / 2) + 50, Math.round(vh - 35)],
+        ];
+        for (const [x, y] of pts) {
+          const el = document.elementFromPoint(x, y);
+          if (el && (el.tagName === 'XHS-PUBLISH-BTN' || el.closest('xhs-publish-btn'))) {
+            return { x, y };
+          }
+        }
+        return null;
+      });
+      if (pt) {
+        await this._mouseClick(pt.x, pt.y);
+        return pt;
+      }
+      await sleep(400);
+    }
+    throw new Error('未找到小红书发布按钮 (xhs-publish-btn)，请确保页面已滚动到底部且红色「发布」按钮可见');
   }
 
   // ---------- 键盘 ----------

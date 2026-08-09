@@ -21,8 +21,42 @@ const TMP = path.join(os.tmpdir(), 'xbook-publish');
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
 
 function proxyUrl() {
-  return process.env.HTTPS_PROXY || process.env.https_proxy ||
-    process.env.HTTP_PROXY || process.env.http_proxy || '';
+  // 显式设置（含空字符串=强制直连）优先；未设置时默认走 Clash（127.0.0.1:7890）。
+  // 原因：pbs.twimg.com 等被墙 CDN 在本机被 DNS/hosts 指向 localhost，Node 直连必 ECONNREFUSED，
+  // 必须经代理才能解析到真实 IP。
+  for (const k of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) {
+    if (process.env[k] !== undefined) return process.env[k];
+  }
+  return 'http://127.0.0.1:7890';
+}
+
+// 从图片 URL 提取合法的文件扩展名。
+// 关键：X/Twitter 的 media URL 常带 :large / :orig / :small 格式后缀（如 .../XXX.jpg:large），
+// 若直接 path.extname 会把 ':large' 一起带进文件名 —— Windows 下文件名含冒号会创建成
+// 「备用数据流(ADS)」而非普通文件，导致上传到小红书时拿到坏文件、报「上传格式不支持」。
+// 故先剥离 :\w+ 后缀，再取扩展名；无扩展名则看 ?format= 参数，再无则默认 .jpg。
+function pickExt(imageUrl) {
+  let parsed;
+  try { parsed = new url.URL(imageUrl); } catch (e) { return '.jpg'; }
+  const pathname = parsed.pathname.replace(/:\w+$/, '');
+  let ext = path.extname(pathname);
+  if (!ext) {
+    const fmt = new URLSearchParams(parsed.search).get('format');
+    ext = fmt ? '.' + String(fmt).replace(/[^\w]/g, '') : '.jpg';
+  }
+  // 清洗任何文件系统中非法的字符（冒号/斜杠等）
+  ext = ext.replace(/[^.\w]/g, '');
+  return ext || '.jpg';
+}
+
+// 校验文件内容是否为常见图片格式（防代理/网络返回 HTML 错误页被误当图片上传）
+function isImageBuffer(buf) {
+  if (!buf || buf.length < 4) return false;
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return true; // JPEG
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return true; // PNG
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true; // GIF
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return true; // WebP
+  return false;
 }
 
 function downloadToTemp(imageUrl, timeoutMs = 30000) {
@@ -30,7 +64,7 @@ function downloadToTemp(imageUrl, timeoutMs = 30000) {
     let parsed;
     try { parsed = new url.URL(imageUrl); } catch (e) { return reject(new Error('非法图片 URL')); }
 
-    const ext = path.extname(parsed.pathname).split('?')[0] || '.jpg';
+    const ext = pickExt(imageUrl);
     const out = path.join(TMP, `img_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
 
     const onResponse = (res) => {
@@ -40,7 +74,15 @@ function downloadToTemp(imageUrl, timeoutMs = 30000) {
       if (res.statusCode !== 200) { res.resume(); return reject(new Error('下载失败 HTTP ' + res.statusCode)); }
       const ws = fs.createWriteStream(out);
       res.pipe(ws);
-      ws.on('finish', () => resolve(out));
+      ws.on('finish', () => {
+        let buf;
+        try { buf = fs.readFileSync(out); } catch (e) { fs.unlink(out, () => {}); return reject(new Error('读取下载文件失败')); }
+        if (!isImageBuffer(buf)) {
+          fs.unlink(out, () => {});
+          return reject(new Error('下载内容不是有效图片（可能代理返回了错误页或非图片数据）'));
+        }
+        resolve(out);
+      });
       ws.on('error', (e) => { fs.unlink(out, () => {}); reject(e); });
     };
 
@@ -81,4 +123,4 @@ function downloadToTemp(imageUrl, timeoutMs = 30000) {
   });
 }
 
-module.exports = { downloadToTemp, TMP };
+module.exports = { downloadToTemp, TMP, pickExt, isImageBuffer };

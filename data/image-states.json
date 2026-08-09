@@ -5,7 +5,17 @@
   },
   "https://pbs.twimg.com/media/HG5NNxQa0AA7evb.jpg": {
     "favorited": true,
-    "favoritedAt": "2026-08-08T13:56:39.529Z"
+    "favoritedAt": "2026-08-08T13:56:39.529Z",
+    "published": {
+      "title": "まよ作品分享",
+      "content": "作者：まよ@oekaki_bibbi\n来源：x.com\n喜多",
+      "tags": [
+        "收藏",
+        "喜多"
+      ],
+      "url": "https://creator.xiaohongshu.com/publish/success?source=official&bind_status=not_bind&__debugger__=&proxy=",
+      "at": "2026-08-09T15:35:13.069Z"
+    }
   },
   "https://pbs.twimg.com/media/HG5NNyCbQAAzh93.jpg": {
     "favorited": true,
@@ -26,5 +36,13 @@
   "https://pbs.twimg.com/media/HGobaPZaIAA9I_n.jpg": {
     "favorited": true,
     "favoritedAt": "2026-08-08T13:57:27.880Z"
+  },
+  "https://pbs.twimg.com/media/HGbEnr7bUAAVIcM.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T03:13:04.057Z"
+  },
+  "https://pbs.twimg.com/media/HGbEmz8bQAAmvDu.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T03:13:09.655Z"
   }
 }

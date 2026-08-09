@@ -32,7 +32,8 @@
   .cell .fav { position:absolute; top:4px; right:4px; font-size:14px; }
   .cell .eye { position:absolute; bottom:4px; right:4px; background:rgba(0,0,0,.5); border-radius:4px; padding:2px 6px; font-size:12px; }
   #log { background:#0e1620; border:1px solid #38444d; border-radius:8px; padding:10px; font-size:12px; max-height:200px; overflow:auto; white-space:pre-wrap; }
-  .hint { font-size:12px; color:#8b98a5; }
+  .hint { font-size:12px; color:#8b98a5; padding:8px 4px; }
+  .loadmore { font-size:12px; color:#8b98a5; text-align:center; padding:10px; }
   @media (max-width:820px){ .wrap{ grid-template-columns:1fr; } }
 </style>
 </head>
@@ -55,9 +56,9 @@
       </div>
       <label>模板名称（保存时用）</label>
       <input type="text" id="tplName" placeholder="如：AI插画默认">
-      <label>标题（可用 {{author}} {{text}} {{desc}}）</label>
+      <label>标题（可用 {{author}} {{author_name}} {{author_screen_name}} {{text}} {{desc}} {{date}} {{post_date}}）</label>
       <input type="text" id="title" placeholder="标题">
-      <label>正文（可用占位符，{{text}} 带入原帖文字，{{desc}} 手填描述）</label>
+      <label>正文（可用占位符：{{author}}/{{author_name}}/{{author_screen_name}} 作者、{{text}} 原帖文字、{{desc}} 手填、{{date}} 今天日期、{{post_date}} 原帖发布日期）</label>
       <textarea id="content" rows="4" placeholder="正文，换行用回车"></textarea>
       <label>话题标签（逗号分隔，须为小红书已存在话题）</label>
       <input type="text" id="tags" placeholder="AI生成,二次元">
@@ -82,13 +83,13 @@
     </div>
   </div>
 
-  <!-- 右：选图 -->
+  <!-- 右：选图（懒加载 / 无限滚动）-->
   <div class="panel">
     <h2>③ 选择图片</h2>
     <div class="row" style="margin-bottom:10px">
-      <button class="ghost" id="selAll">全选</button>
+      <button class="ghost" id="selAll">全选当前</button>
       <button class="ghost" id="selClear">清空</button>
-      <label style="margin:0"><input type="checkbox" id="onlyFav"> 仅显示收藏图</label>
+      <label style="margin:0"><input type="checkbox" id="onlyFav" checked> 仅显示收藏图</label>
     </div>
     <div class="grid" id="grid"></div>
   </div>
@@ -100,12 +101,23 @@ const statusEl = document.getElementById('status');
 const gridEl = document.getElementById('grid');
 const logEl = document.getElementById('log');
 const selCountEl = document.getElementById('selCount');
+const onlyFavEl = document.getElementById('onlyFav');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let allItems = [];
-let flatList = [];
+// ---- 数据状态 ----
+let allFlat = [];           // 从 /api/bookmarks 流式累积的全部图片
+let favFlat = [];           // 从 /api/favorite-posts 取得的收藏图
+let flatList = allFlat;     // 当前展示的列表（active 引用）
+let postMap = new Map();    // postId -> {text, author}（两来源都会积累，供发布时取正文/作者）
 let states = {};
 const selected = new Set(); // 以 base 为 key
+const cellMap = new Map();  // base -> 已渲染的 cell 元素
+
+// 流式抓取控制
+let cursor = 0;
+let loading = false;
+let exhausted = false;      // all 模式是否已翻完
+let mode = 'all';           // 'all' | 'fav'
 
 const lb = Lightbox.create({
   getState: (base) => states[base] || null,
@@ -117,7 +129,16 @@ const lb = Lightbox.create({
     const fav = !!r.favorited;
     states[base] = states[base] || {};
     states[base].favorited = fav;
-    renderGrid();
+    // fav 模式下取消收藏要从网格移除该格；其余情况原地刷新状态
+    if (mode === 'fav' && !fav) {
+      const cell = cellMap.get(base);
+      if (cell) { cell.remove(); cellMap.delete(base); }
+      if (!gridEl.querySelector('.cell')) {
+        const d = document.createElement('div'); d.className = 'hint'; d.textContent = '没有图片'; gridEl.appendChild(d);
+      }
+    } else {
+      refreshCell(base);
+    }
     return fav;
   },
 });
@@ -128,7 +149,7 @@ function substitute(str, ctx) {
   return String(str || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (ctx[k] != null ? ctx[k] : m));
 }
 
-// ---- 模板 ----
+// ---- 模板（不变）----
 async function loadTemplates() {
   const d = await (await fetch('/api/templates')).json();
   const sel = document.getElementById('tplSelect');
@@ -137,6 +158,11 @@ async function loadTemplates() {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name;
     sel.appendChild(o);
+  }
+  // 默认选中第一个模板并回填标题/正文/标签（复用 onchange 逻辑）
+  if (d.items && d.items.length) {
+    sel.value = d.items[0].id;
+    sel.dispatchEvent(new Event('change'));
   }
 }
 document.getElementById('tplSelect').onchange = (e) => {
@@ -172,69 +198,149 @@ document.getElementById('tplDelete').onclick = async () => {
   statusEl.textContent = '模板已删除'; await loadTemplates();
 };
 
-// ---- 选图 ----
-async function loadImages() {
-  allItems = []; flatList = [];
-  let cursor = 0, pages = 0;
-  statusEl.textContent = '加载图片…';
-  while (true) {
-    const d = await (await fetch(`/api/bookmarks?cursor=${cursor}&limit=100`)).json();
-    for (const it of (d.items || [])) allItems.push(it);
-    if (d.nextCursor == null) break;
-    cursor = d.nextCursor;
-    if (++pages > 500) break;
-  }
-  flatList = [];
-  for (const p of allItems) {
-    if (p.media && p.media.length) {
-      p.media.forEach((m, mi) => {
-        const base = (m.url || m.thumb || '').replace(/:\w+$/, '');
-        const full = base ? base + ':large' : (m.url || m.thumb || '');
-        const feed = base ? base + ':small' : (m.url || m.thumb || '');
-        flatList.push({ postId: p.id, mediaIdx: mi, base, full, feed });
-      });
-    }
-  }
-  renderGrid();
-  statusEl.textContent = `共 ${flatList.length} 张图`;
+// ---- 选图：懒加载 / 无限滚动 ----
+function mediaFromPost(p) {
+  if (!p.media || !p.media.length) return [];
+  return p.media.map((m, mi) => {
+    const base = (m.url || m.thumb || '').replace(/:\w+$/, '');
+    const full = base ? base + ':large' : (m.url || m.thumb || '');
+    const feed = base ? base + ':small' : (m.url || m.thumb || '');
+    return { postId: p.id, mediaIdx: mi, base, full, feed };
+  });
 }
 
+// 把一个图片渲染进 cell（innerHTML 重建后重绑事件，用赋值覆盖避免重复监听）
+function renderCell(cell, it) {
+  const fav = (states[it.base] && states[it.base].favorited) ? '♥' : '';
+  const pub = (states[it.base] && states[it.base].published) ? '✅' : '';
+  cell.className = 'cell' + (selected.has(it.base) ? ' sel' : '');
+  cell.dataset.base = it.base;
+  cell.innerHTML = `<div class="chk">${selected.has(it.base) ? '✓' : ''}</div>` +
+    (fav ? `<div class="fav">${fav}</div>` : '') +
+    (pub ? `<div class="fav" style="right:auto;left:4px">${pub}</div>` : '') +
+    `<img loading="lazy" src="${it.feed}" alt="" onerror="this.style.opacity=.25">` +
+    `<div class="eye">🔍</div>`;
+  cell.querySelector('.eye').onclick = (e) => {
+    e.stopPropagation();
+    const idx = flatList.indexOf(it);
+    lb.open(flatList, Math.max(0, idx));
+  };
+  cell.onclick = () => {
+    if (selected.has(it.base)) selected.delete(it.base); else selected.add(it.base);
+    cell.classList.toggle('sel');
+    const chk = cell.querySelector('.chk');
+    if (chk) chk.textContent = selected.has(it.base) ? '✓' : '';
+    updateSelCount();
+  };
+}
+
+function makeCell(it) { const c = document.createElement('div'); renderCell(c, it); cellMap.set(it.base, c); return c; }
+
+function refreshCell(base) {
+  const cell = cellMap.get(base);
+  const it = flatList.find((x) => x.base === base) || allFlat.find((x) => x.base === base);
+  if (cell && it) renderCell(cell, it);
+}
+
+// 全量重建当前展示列表（用于筛选切换 / 全选清空）
 function renderGrid() {
-  const onlyFav = document.getElementById('onlyFav').checked;
-  gridEl.innerHTML = '';
+  gridEl.querySelectorAll('.cell, .hint, .loadmore').forEach((n) => n.remove());
+  cellMap.clear();
   let shown = 0;
   for (const it of flatList) {
-    if (onlyFav && !(states[it.base] && states[it.base].favorited)) continue;
+    if (onlyFavEl.checked && !(states[it.base] && states[it.base].favorited)) continue;
     shown++;
-    const cell = document.createElement('div');
-    cell.className = 'cell' + (selected.has(it.base) ? ' sel' : '');
-    const fav = (states[it.base] && states[it.base].favorited) ? '♥' : '';
-    const pub = (states[it.base] && states[it.base].published) ? '✅' : '';
-    cell.innerHTML = `<div class="chk">${selected.has(it.base) ? '✓' : ''}</div>` +
-      (fav ? `<div class="fav">${fav}</div>` : '') +
-      (pub ? `<div class="fav" style="right:auto;left:4px">${pub}</div>` : '') +
-      `<img loading="lazy" src="${it.feed}" alt="" onerror="this.style.opacity=.25">` +
-      `<div class="eye">🔍</div>`;
-    cell.querySelector('.eye').onclick = (e) => { e.stopPropagation(); const idx = flatList.indexOf(it); lb.open(flatList, idx); };
-    cell.onclick = () => {
-      if (selected.has(it.base)) selected.delete(it.base); else selected.add(it.base);
-      cell.classList.toggle('sel');
-      cell.querySelector('.chk').textContent = selected.has(it.base) ? '✓' : '';
-      updateSelCount();
-    };
-    gridEl.appendChild(cell);
+    gridEl.appendChild(makeCell(it));
   }
-  if (shown === 0) gridEl.innerHTML = '<div class="hint">没有图片</div>';
+  if (shown === 0) {
+    const d = document.createElement('div'); d.className = 'hint'; d.textContent = '没有图片'; gridEl.appendChild(d);
+  } else if (mode === 'all' && !exhausted) {
+    const m = document.createElement('div'); m.className = 'loadmore'; m.textContent = '继续向下滚动加载更多…'; gridEl.appendChild(m);
+  }
 }
-function updateSelCount() { selCountEl.textContent = '已选 ' + selected.size + ' 张'; }
 
-document.getElementById('selAll').onclick = () => { flatList.forEach((it) => selected.add(it.base)); renderGrid(); updateSelCount(); };
+function updateStatus() {
+  const total = (mode === 'all' ? allFlat.length : favFlat.length);
+  let s = `已加载 ${total} 张图`;
+  if (mode === 'all') s += exhausted ? '（已全部）' : '（继续滚动加载更多）';
+  statusEl.textContent = s;
+}
+
+// all 模式：按游标流式翻页，只追加新 cell，不一次性渲染全部
+async function loadNextPage() {
+  if (mode !== 'all' || loading || exhausted) return;
+  loading = true;
+  statusEl.textContent = '加载图片…';
+  try {
+    const d = await (await fetch(`/api/bookmarks?cursor=${cursor}&limit=50`)).json();
+    const items = d.items || [];
+    for (const p of items) postMap.set(p.id, { text: p.text || '', author: p.author, created_at: p.created_at || '' });
+    const imgs = items.flatMap(mediaFromPost);
+    for (const it of imgs) {
+      allFlat.push(it);
+      if (mode === 'all') gridEl.appendChild(makeCell(it));
+    }
+    // 移除「加载更多」提示，避免堆积
+    const m = gridEl.querySelector('.loadmore'); if (m) m.remove();
+    if (d.nextCursor == null) {
+      exhausted = true;
+      if (allFlat.length === 0) { const d2 = document.createElement('div'); d2.className = 'hint'; d2.textContent = '没有图片'; gridEl.appendChild(d2); }
+      else { const done = document.createElement('div'); done.className = 'loadmore'; done.textContent = '— 已加载全部 —'; gridEl.appendChild(done); }
+    } else {
+      cursor = d.nextCursor;
+      if (items.length) { const more = document.createElement('div'); more.className = 'loadmore'; more.textContent = '继续向下滚动加载更多…'; gridEl.appendChild(more); }
+    }
+    updateStatus();
+  } catch (e) {
+    statusEl.textContent = '加载失败：' + e.message;
+  } finally {
+    loading = false;
+  }
+}
+
+// fav 模式：直接取收藏帖（集合小，一次渲染即可）
+async function loadFav() {
+  mode = 'fav';
+  statusEl.textContent = '加载收藏图…';
+  try {
+    const d = await (await fetch('/api/favorite-posts')).json();
+    const items = d.items || [];
+    for (const p of items) postMap.set(p.id, { text: p.text || '', author: p.author, created_at: p.created_at || '' });
+    favFlat = items.flatMap(mediaFromPost);
+    flatList = favFlat;
+    renderGrid();
+    updateStatus();
+  } catch (e) {
+    statusEl.textContent = '加载失败：' + e.message;
+  }
+}
+
+// 滚动接近底部时自动加载下一页
+gridEl.addEventListener('scroll', () => {
+  if (mode !== 'all' || loading || exhausted) return;
+  if (gridEl.scrollTop + gridEl.clientHeight >= gridEl.scrollHeight - 300) loadNextPage();
+});
+
+document.getElementById('selAll').onclick = () => { for (const it of flatList) selected.add(it.base); renderGrid(); updateSelCount(); };
 document.getElementById('selClear').onclick = () => { selected.clear(); renderGrid(); updateSelCount(); };
-document.getElementById('onlyFav').onchange = renderGrid;
+onlyFavEl.onchange = async () => {
+  if (onlyFavEl.checked) {
+    await loadFav();
+  } else {
+    mode = 'all';
+    flatList = allFlat;
+    if (allFlat.length === 0) { cursor = 0; exhausted = false; await loadNextPage(); }
+    else renderGrid();
+  }
+};
+function updateSelCount() { selCountEl.textContent = '已选 ' + selected.size + ' 张'; }
 
 // ---- 发布 ----
 document.getElementById('publishBtn').onclick = async () => {
-  const items = flatList.filter((x) => selected.has(x.base));
+  // 合并两来源、按 base 去重（收藏图是全部图的子集）
+  const seen = new Set(); const union = [];
+  for (const it of [...allFlat, ...favFlat]) if (!seen.has(it.base)) { seen.add(it.base); union.push(it); }
+  const items = union.filter((x) => selected.has(x.base));
   if (!items.length) { statusEl.textContent = '请先选择图片'; return; }
   if (!confirm(`确认发布 ${items.length} 张图到小红书？（将逐张串行发布）`)) return;
   const titleT = document.getElementById('title').value;
@@ -247,9 +353,15 @@ document.getElementById('publishBtn').onclick = async () => {
   let okN = 0, failN = 0;
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    const post = allItems.find((p) => p.id === it.postId) || {};
-    const author = (post.author && (post.author.name || post.author.screen_name)) || '';
-    const ctx = { text: post.text || '', author, desc };
+    const post = postMap.get(it.postId) || {};
+    const authorObj = post.author || {};
+    const author = (authorObj.name || authorObj.screen_name) || '';
+    const authorName = authorObj.name || '';
+    const authorScreen = authorObj.screen_name || '';
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const postDate = (post.created_at || '').slice(0, 10);
+    const ctx = { text: post.text || '', author, author_name: authorName, author_screen_name: authorScreen, desc, date: dateStr, post_date: postDate };
     const payload = {
       imageUrl: it.full,
       title: substitute(titleT, ctx),
@@ -261,7 +373,7 @@ document.getElementById('publishBtn').onclick = async () => {
     try {
       const r = await fetch('/api/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((x) => x.json());
       if (r.ok) { okN++; log(`✅ [${i + 1}] 发布成功 → ${r.url || ''}`); }
-      else { failN++; log(`❌ [${i + 1}] 失败：${r.error || '未知'}`); }
+      else { failN++; log(`❌ [${i + 1}] 失败：${r.error || ('url: ' + (r.url || '无'))}`); }
     } catch (e) { failN++; log(`❌ [${i + 1}] 异常：${e.message}`); }
     await sleep(1500); // 间隔防风控
   }
@@ -271,10 +383,13 @@ document.getElementById('publishBtn').onclick = async () => {
 
 document.getElementById('backBtn').onclick = () => { window.location.href = '/'; };
 
+// ---- 启动：只先拉一页，其余滚动时再加载 ----
 (async () => {
   states = await (await fetch('/api/image-states')).json().catch(() => ({}));
   await loadTemplates();
-  await loadImages();
+  // 默认按「仅显示收藏图」勾选状态决定首屏加载源
+  if (onlyFavEl.checked) await loadFav();
+  else await loadNextPage();
 })();
 </script>
 </body>
