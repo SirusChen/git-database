@@ -121,24 +121,27 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/api/publish' && req.method === 'POST') {
       try {
         const body = JSON.parse(await readBody(req) || '{}');
-        const { imageUrl, title, content, tags, aiDeclaration } = body;
-        if (!imageUrl) return send(res, 400, { ok: false, error: 'missing imageUrl' });
-        const base = (String(imageUrl).replace(/:\w+$/, '')).split('?')[0];
-        const localPath = await imageCache.downloadToTemp(imageUrl);
+        const { imageUrl, imageUrls, title, content, tags, aiDeclaration, scheduledAt } = body;
+        const urls = imageUrls || (imageUrl ? [imageUrl] : []);
+        if (!urls.length) return send(res, 400, { ok: false, error: 'missing imageUrl(s)' });
+        const bases = urls.map((u) => (String(u).replace(/:\w+$/, '')).split('?')[0]);
+        const localPaths = await Promise.all(urls.map((u) => imageCache.downloadToTemp(u)));
         const publisher = new XiaohongshuPublisher({ port: Number(process.env.XHS_CDP_PORT || 9222) });
         const r = await publisher.publish({
-          imagePath: localPath,
+          imagePaths: localPaths,
           title: title || '',
           content: content || '',
           tags: Array.isArray(tags) ? tags : [],
           aiDeclaration: !!aiDeclaration,
+          scheduledAt: scheduledAt || undefined,
+          dryRun: !!body.dryRun,
         });
         let published = false;
         if (r.published && r.url) {
-          imageStates.markPublished(base, { title: title || '', content: content || '', tags: Array.isArray(tags) ? tags : [], url: r.url });
+          imageStates.markPublished(bases, { title: title || '', content: content || '', tags: Array.isArray(tags) ? tags : [], url: r.url });
           published = true;
         }
-        return send(res, 200, { ok: r.published, published, ...r });
+        return send(res, 200, { ok: r.published, published, publishedBases: bases, ...r });
       } catch (e) {
         // 把 AggregateError（如多地址连接重试全部失败）等底层错误展开为可读信息
         let msg = (e && Array.isArray(e.errors) && e.errors.length)

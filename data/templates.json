@@ -4,7 +4,7 @@
     "name": "分享图片",
     "title": "{{author_name}}作品分享",
     "content": "作者：{{author_name}}@{{author_screen_name}}\n来源：x.com\n{{desc}}",
-    "tags": ["收藏"],
+    "tags": ["收藏", "{{desc}}"],
     "aiDeclaration": false
   }
 ]

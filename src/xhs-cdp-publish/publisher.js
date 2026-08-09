@@ -41,13 +41,15 @@ class XiaohongshuPublisher {
   }
 
   /**
-   * 发布一篇图文帖子。
+   * 发布一篇图文帖子（支持单图/多图）。
    * @param {object} params
    * @param {string} params.title 标题（≤20 单位：汉字/全角=1，英文数字每 2 个=1）
    * @param {string} params.content 正文，用 \n 分隔段落
-   * @param {string} params.imagePath 本地图片绝对路径（必须先下载到本地）
+   * @param {string} [params.imagePath] 单图本地绝对路径（与 imagePaths 二选一）
+   * @param {string[]} [params.imagePaths] 多图本地绝对路径数组（与 imagePath 二选一）
    * @param {string[]} [params.tags=[]] 话题标签，必须是小红书已存在的话题
    * @param {boolean} [params.aiDeclaration=false] 是否勾选「笔记含AI合成内容」
+   * @param {string} [params.scheduledAt] 定时发布时间，格式 'YYYY-MM-DD HH:mm'
    * @param {boolean} [params.dryRun=false] true 时填完所有内容但不点发布（用于验证）
    * @param {string} [params.screenshotDir] 若提供则保存预览截图到此目录
    * @returns {Promise<{published:boolean, url?:string, preview?:string, dryRun?:boolean}>}
@@ -56,12 +58,15 @@ class XiaohongshuPublisher {
     title,
     content,
     imagePath,
+    imagePaths,
     tags = [],
     aiDeclaration = false,
+    scheduledAt,
     dryRun = false,
     screenshotDir,
   } = {}) {
-    if (!imagePath) throw new Error('publish() 需要 imagePath（本地图片绝对路径）');
+    const paths = imagePaths || (imagePath ? [imagePath] : []);
+    if (!paths.length) throw new Error('publish() 需要 imagePath / imagePaths（本地图片绝对路径）');
 
     const w = this.waits;
     const client = this.client;
@@ -74,8 +79,8 @@ class XiaohongshuPublisher {
     await client.clickByText('上传图文', { last: true });
     await sleep(w.afterClickUpload);
 
-    // 3) 上传图片
-    await client.uploadFile('input.upload-input[type=file]', imagePath);
+    // 3) 上传图片（支持多图）
+    await client.uploadFile('input.upload-input[type=file]', paths);
     await sleep(w.afterUpload);
 
     // 处理可能的位置权限弹窗
@@ -114,7 +119,13 @@ class XiaohongshuPublisher {
       await sleep(800);
     }
 
-    // 8) 预览截图
+    // 8) 定时发布（可选）：填完内容后设时间，截图时能看到
+    if (scheduledAt) {
+      await client.setTimedPublish(scheduledAt);
+      await sleep(1000);
+    }
+
+    // 9) 预览截图
     if (screenshotDir) {
       try {
         const p = path.join(screenshotDir, 'xhs_publish_preview.png');
@@ -131,7 +142,7 @@ class XiaohongshuPublisher {
       return { published: false, dryRun: true, preview: this.lastPreview };
     }
 
-    // 9) 发布（小红书把按钮封装在 closed Shadow DOM 的 <xhs-publish-btn> 里，必须用 elementFromPoint 点击）
+    // 10) 发布（小红书把按钮封装在 closed Shadow DOM 的 <xhs-publish-btn> 里，必须用 elementFromPoint 点击）
     await sleep(600);
     await client.clickPublishBtn();
 

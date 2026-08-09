@@ -10,10 +10,11 @@
  *
  * 作为命令行运行：
  *   node src/xhs-cdp-publish/index.js \
- *     --image D:/path/to.jpg \
+ *     --images D:/a.jpg,D:/b.jpg \   # 多图（逗号分隔；也可用 --image 单图）
  *     --title "标题" \
  *     --content "第一行\n第二行" \
  *     --tags "AI生成,二次元ai绘画" \
+ *     --schedule "2026-08-11 10:00" \ # 定时发布（YYYY-MM-DD HH:mm）
  *     --ai \
  *     --screenshot-dir D:/out
  *   # 仅验证不发布：追加 --dry-run
@@ -23,7 +24,7 @@ const path = require('path');
 const { XiaohongshuPublisher } = require('./publisher');
 
 function parseArgs(argv) {
-  const out = { tags: [], ai: false, dryRun: false, host: '127.0.0.1', port: 9222 };
+  const out = { tags: [], images: [], schedule: undefined, ai: false, dryRun: false, host: '127.0.0.1', port: 9222 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     switch (a) {
@@ -35,6 +36,12 @@ function parseArgs(argv) {
         break;
       case '--image':
         out.image = argv[++i];
+        break;
+      case '--images':
+        out.images = argv[++i].split(',').map((t) => t.trim()).filter(Boolean);
+        break;
+      case '--schedule':
+        out.schedule = argv[++i];
         break;
       case '--tags':
         out.tags = argv[++i]
@@ -77,13 +84,15 @@ function printHelp() {
   - 图片须为本地绝对路径
 
 用法：
-  node src/xhs-cdp-publish/index.js --image <本地图片> [选项]
+  node src/xhs-cdp-publish/index.js --images <a.jpg,b.jpg> [选项]
 
 选项：
-  --image <path>        本地图片绝对路径（必填）
+  --image <path>        本地图片绝对路径（单图；与 --images 二选一）
+  --images <a,b,c>     本地图片绝对路径，逗号分隔（多图）
   --title <text>       标题（≤20 单位）
   --content <text>     正文，用 \\n 分隔段落
   --tags <a,b,c>       话题标签，逗号分隔（须为已存在话题）
+  --schedule <dt>      定时发布时间，格式 'YYYY-MM-DD HH:mm'
   --ai                 勾选「笔记含AI合成内容」官方声明
   --dry-run            填完内容但【不点发布】（用于验证流程）
   --screenshot-dir <d> 保存预览截图到此目录
@@ -99,8 +108,11 @@ async function main() {
     printHelp();
     return;
   }
-  if (!args.image) {
-    console.error('缺少必填参数 --image <本地图片路径>');
+  const imagePaths = args.images.length
+    ? args.images.map((p) => path.resolve(p))
+    : (args.image ? [path.resolve(args.image)] : []);
+  if (!imagePaths.length) {
+    console.error('缺少必填参数 --image 或 --images <本地图片路径>');
     printHelp();
     process.exit(2);
   }
@@ -109,9 +121,10 @@ async function main() {
   const result = await publisher.publish({
     title: args.title,
     content: args.content,
-    imagePath: path.resolve(args.image),
+    imagePaths,
     tags: args.tags,
     aiDeclaration: args.ai,
+    scheduledAt: args.schedule,
     dryRun: args.dryRun,
     screenshotDir: args.screenshotDir ? path.resolve(args.screenshotDir) : undefined,
   });

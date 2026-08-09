@@ -39,10 +39,52 @@
   },
   "https://pbs.twimg.com/media/HGbEnr7bUAAVIcM.jpg": {
     "favorited": true,
-    "favoritedAt": "2026-08-09T03:13:04.057Z"
+    "favoritedAt": "2026-08-09T03:13:04.057Z",
+    "published": {
+      "title": "スコッティ作品分享",
+      "content": "作者：スコッティ@Sco_ttie\n来源：x.com\n",
+      "tags": [
+        "收藏"
+      ],
+      "url": "https://creator.xiaohongshu.com/publish/success?source=official&bind_status=not_bind&__debugger__=&proxy=",
+      "at": "2026-08-09T16:29:42.531Z"
+    }
   },
   "https://pbs.twimg.com/media/HGbEmz8bQAAmvDu.jpg": {
     "favorited": true,
-    "favoritedAt": "2026-08-09T03:13:09.655Z"
+    "favoritedAt": "2026-08-09T03:13:09.655Z",
+    "published": {
+      "title": "スコッティ作品分享",
+      "content": "作者：スコッティ@Sco_ttie\n来源：x.com\n",
+      "tags": [
+        "收藏"
+      ],
+      "url": "https://creator.xiaohongshu.com/publish/success?source=official&bind_status=not_bind&__debugger__=&proxy=",
+      "at": "2026-08-09T16:29:42.531Z"
+    }
+  },
+  "https://pbs.twimg.com/media/HGQ35kva4AA52is.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T15:54:52.858Z"
+  },
+  "https://pbs.twimg.com/media/HGQ35k4a4AEQkIb.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T15:55:03.617Z"
+  },
+  "https://pbs.twimg.com/media/HGPRaGZbEAABiHd.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T15:55:17.320Z"
+  },
+  "https://pbs.twimg.com/media/HGPRaBfbYAAbFEp.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T15:55:20.368Z"
+  },
+  "https://pbs.twimg.com/media/HGPRaBfasAEFz2K.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T15:55:22.128Z"
+  },
+  "https://pbs.twimg.com/media/HGPRaBfbcAAGtKP.jpg": {
+    "favorited": true,
+    "favoritedAt": "2026-08-09T15:55:23.792Z"
   }
 }

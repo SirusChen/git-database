@@ -16,7 +16,7 @@
   button { background:#1d9bf0; color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; }
   button.ghost { background:#192734; color:#e7e9ea; border:1px solid #38444d; }
   button:disabled { opacity:.5; cursor:default; }
-  input[type=text], textarea { background:#192734; color:#e7e9ea; border:1px solid #38444d; border-radius:8px; padding:8px 10px; font-size:13px; width:100%; }
+  input[type=text], input[type=date], input[type=time], textarea { background:#192734; color:#e7e9ea; border:1px solid #38444d; border-radius:8px; padding:8px 10px; font-size:13px; width:100%; }
   label { font-size:13px; color:#8b98a5; display:block; margin:10px 0 4px; }
   #status { font-size:12px; color:#8b98a5; }
   .wrap { max-width:1100px; margin:0 auto; padding:16px; display:grid; grid-template-columns:1fr 1fr; gap:18px; }
@@ -60,7 +60,7 @@
       <input type="text" id="title" placeholder="标题">
       <label>正文（可用占位符：{{author}}/{{author_name}}/{{author_screen_name}} 作者、{{text}} 原帖文字、{{desc}} 手填、{{date}} 今天日期、{{post_date}} 原帖发布日期）</label>
       <textarea id="content" rows="4" placeholder="正文，换行用回车"></textarea>
-      <label>话题标签（逗号分隔，须为小红书已存在话题）</label>
+      <label>话题标签（逗号分隔，须为小红书已存在话题；支持 {{author}} {{text}} {{desc}} {{date}} {{post_date}}）</label>
       <input type="text" id="tags" placeholder="AI生成,二次元">
       <div class="row" style="margin-top:10px">
         <label style="margin:0"><input type="checkbox" id="ai"> 笔记含AI合成内容声明</label>
@@ -75,6 +75,19 @@
       <h2>② 发布设置</h2>
       <label>描述占位符 {{desc}}（对所有选中图统一填入）</label>
       <input type="text" id="desc" placeholder="可选，如：转载请注明出处">
+      <div class="row" style="margin-top:10px">
+        <label style="margin:0"><input type="checkbox" id="mergeNote"> 合并为一篇多图笔记</label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label style="margin:0"><input type="checkbox" id="schedule"> 定时发布</label>
+      </div>
+      <div class="row" style="margin-top:6px; gap:10px; align-items:stretch">
+        <input type="date" id="scheduleDate" style="flex:1">
+        <input type="time" id="scheduleTime" style="width:110px">
+      </div>
+      <div class="row" style="margin-top:6px">
+        <label style="margin:0"><input type="checkbox" id="scheduleSeries"> 连续发布（每篇自动+1天）</label>
+      </div>
       <div class="row" style="margin-top:12px">
         <button id="publishBtn">🚀 一键发布选中图</button>
         <span class="hint" id="selCount">已选 0 张</span>
@@ -236,6 +249,12 @@ function renderCell(cell, it) {
 
 function makeCell(it) { const c = document.createElement('div'); renderCell(c, it); cellMap.set(it.base, c); return c; }
 
+// fav 模式排序：未发布的排前面，已发布的沉到最后（同组保持原顺序，稳定排序）
+function isPublished(it) { return !!(states[it.base] && states[it.base].published); }
+function sortedFavList(list) {
+  return list.slice().sort((a, b) => (isPublished(a) ? 1 : 0) - (isPublished(b) ? 1 : 0));
+}
+
 function refreshCell(base) {
   const cell = cellMap.get(base);
   const it = flatList.find((x) => x.base === base) || allFlat.find((x) => x.base === base);
@@ -307,7 +326,7 @@ async function loadFav() {
     const items = d.items || [];
     for (const p of items) postMap.set(p.id, { text: p.text || '', author: p.author, created_at: p.created_at || '' });
     favFlat = items.flatMap(mediaFromPost);
-    flatList = favFlat;
+    flatList = sortedFavList(favFlat);   // 已发布的沉到最后
     renderGrid();
     updateStatus();
   } catch (e) {
@@ -336,47 +355,93 @@ onlyFavEl.onchange = async () => {
 function updateSelCount() { selCountEl.textContent = '已选 ' + selected.size + ' 张'; }
 
 // ---- 发布 ----
+function makeCtx(it, desc) {
+  const post = postMap.get(it.postId) || {};
+  const authorObj = post.author || {};
+  const author = (authorObj.name || authorObj.screen_name) || '';
+  const authorName = authorObj.name || '';
+  const authorScreen = authorObj.screen_name || '';
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const postDate = (post.created_at || '').slice(0, 10);
+  return { text: post.text || '', author, author_name: authorName, author_screen_name: authorScreen, desc, date: dateStr, post_date: postDate };
+}
+
+function addDays(dateTimeStr, days) {
+  const [d, t] = dateTimeStr.split(' ');
+  const date = new Date(d + 'T' + t);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${t}`;
+}
+
+function markLocalPublished(base, url) {
+  states[base] = states[base] || {};
+  states[base].published = { url, at: new Date().toISOString() };
+  refreshCell(base);
+}
+
 document.getElementById('publishBtn').onclick = async () => {
   // 合并两来源、按 base 去重（收藏图是全部图的子集）
   const seen = new Set(); const union = [];
   for (const it of [...allFlat, ...favFlat]) if (!seen.has(it.base)) { seen.add(it.base); union.push(it); }
   const items = union.filter((x) => selected.has(x.base));
   if (!items.length) { statusEl.textContent = '请先选择图片'; return; }
-  if (!confirm(`确认发布 ${items.length} 张图到小红书？（将逐张串行发布）`)) return;
+  const mergeNote = document.getElementById('mergeNote').checked;
+  const schedule = document.getElementById('schedule').checked;
+  const scheduleDate = document.getElementById('scheduleDate').value;
+  const scheduleTime = document.getElementById('scheduleTime').value || '09:00';
+  const scheduleSeries = document.getElementById('scheduleSeries').checked;
+  const scheduledBase = schedule ? `${scheduleDate} ${scheduleTime}` : '';
   const titleT = document.getElementById('title').value;
   const contentT = document.getElementById('content').value;
   const tagsT = document.getElementById('tags').value;
   const ai = document.getElementById('ai').checked;
   const desc = document.getElementById('desc').value;
+  const actionText = mergeNote ? `合并为 1 篇多图笔记` : `逐张发布 ${items.length} 篇`;
+  const timeText = schedule ? (scheduleSeries && !mergeNote ? '（定时：每篇+1天）' : '（定时发布）') : '';
+  if (!confirm(`确认发布 ${items.length} 张图到小红书？${actionText}${timeText}`)) return;
   const btn = document.getElementById('publishBtn');
   btn.disabled = true; logEl.textContent = '';
   let okN = 0, failN = 0;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    const post = postMap.get(it.postId) || {};
-    const authorObj = post.author || {};
-    const author = (authorObj.name || authorObj.screen_name) || '';
-    const authorName = authorObj.name || '';
-    const authorScreen = authorObj.screen_name || '';
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const postDate = (post.created_at || '').slice(0, 10);
-    const ctx = { text: post.text || '', author, author_name: authorName, author_screen_name: authorScreen, desc, date: dateStr, post_date: postDate };
-    const payload = {
-      imageUrl: it.full,
-      title: substitute(titleT, ctx),
-      content: substitute(contentT, ctx),
-      tags: tagsT.split(',').map((s) => s.trim()).filter(Boolean),
-      aiDeclaration: ai,
-    };
-    statusEl.textContent = `发布中 ${i + 1}/${items.length} …`;
-    try {
+  try {
+    if (mergeNote) {
+      const ctx = makeCtx(items[0], desc);
+      const tags = tagsT.split(',').map((s) => substitute(s.trim(), ctx)).filter(Boolean);
+      const payload = {
+        imageUrls: items.map((it) => it.full),
+        title: substitute(titleT, ctx),
+        content: substitute(contentT, ctx),
+        tags,
+        aiDeclaration: ai,
+        scheduledAt: schedule ? scheduledBase : undefined,
+      };
+      statusEl.textContent = '发布多图笔记中…';
       const r = await fetch('/api/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((x) => x.json());
-      if (r.ok) { okN++; log(`✅ [${i + 1}] 发布成功 → ${r.url || ''}`); }
-      else { failN++; log(`❌ [${i + 1}] 失败：${r.error || ('url: ' + (r.url || '无'))}`); }
-    } catch (e) { failN++; log(`❌ [${i + 1}] 异常：${e.message}`); }
-    await sleep(1500); // 间隔防风控
-  }
+      if (r.ok) {
+        okN++;
+        log(`✅ 多图笔记发布成功 → ${r.url || ''}`);
+        for (const it of items) markLocalPublished(it.base, r.url);
+      } else {
+        failN++;
+        log(`❌ 多图笔记发布失败：${r.error || '未知'}`);
+      }
+    } else {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const ctx = makeCtx(it, desc);
+        const tags = tagsT.split(',').map((s) => substitute(s.trim(), ctx)).filter(Boolean);
+        const scheduledAt = schedule ? addDays(scheduledBase, scheduleSeries ? i : 0) : undefined;
+        const payload = { imageUrl: it.full, title: substitute(titleT, ctx), content: substitute(contentT, ctx), tags, aiDeclaration: ai, scheduledAt };
+        statusEl.textContent = `发布中 ${i + 1}/${items.length} …`;
+        const r = await fetch('/api/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((x) => x.json());
+        if (r.ok) { okN++; log(`✅ [${i + 1}] 发布成功 → ${r.url || ''}`); markLocalPublished(it.base, r.url); }
+        else { failN++; log(`❌ [${i + 1}] 失败：${r.error || ('url: ' + (r.url || '无'))}`); }
+        if (i < items.length - 1) await sleep(1500); // 间隔防风控
+      }
+    }
+  } catch (e) { failN++; log(`❌ 异常：${e.message}`); }
+  // 收藏视图下，把已发布的图重排到最后
+  if (mode === 'fav') { flatList = sortedFavList(favFlat); renderGrid(); }
   statusEl.textContent = `完成：成功 ${okN} / 失败 ${failN}`;
   btn.disabled = false;
 };
@@ -390,6 +455,10 @@ document.getElementById('backBtn').onclick = () => { window.location.href = '/';
   // 默认按「仅显示收藏图」勾选状态决定首屏加载源
   if (onlyFavEl.checked) await loadFav();
   else await loadNextPage();
+  // 定时发布默认值：今天 09:00
+  const now = new Date();
+  document.getElementById('scheduleDate').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  document.getElementById('scheduleTime').value = '09:00';
 })();
 </script>
 </body>

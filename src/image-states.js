@@ -86,21 +86,25 @@ function setFavorite(base, val) {
 
 /**
  * 标记已发布到小红书。
- * @param {string} base 图片 base URL
+ * @param {string|string[]} base 图片 base URL（或多图 base URL 数组）
  * @param {object} info { title, content, tags, url }
  */
 function markPublished(base, info = {}) {
-  if (!base) throw new Error('markPublished 需要 base');
-  const e = _ensureEntry(base);
-  e.published = {
+  const bases = Array.isArray(base) ? base : [base];
+  if (!bases.length || bases.some((b) => !b)) throw new Error('markPublished 需要 base');
+  const published = {
     title: info.title || '',
     content: info.content || '',
     tags: Array.isArray(info.tags) ? info.tags : [],
     url: info.url || '',
     at: new Date().toISOString(),
   };
+  for (const b of bases) {
+    const e = _ensureEntry(b);
+    e.published = published;
+  }
   save();
-  return e;
+  return published;
 }
 
 /** 返回所有被收藏图片的 base URL 列表（供 /api/favorite-posts 反查帖子） */

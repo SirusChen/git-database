@@ -426,8 +426,11 @@ class CDPClient {
   /**
    * 上传文件到 <input type=file>：开启文件选择拦截 -> 触发 input.click() ->
    * 等待 Page.fileChooserOpened -> DOM.setFileInputFiles。
+   * filePath 可以是单路径字符串或路径数组（多图上传）。
    */
   async uploadFile(selector, filePath) {
+    const paths = Array.isArray(filePath) ? filePath : [filePath];
+    if (!paths.length) throw new Error('uploadFile 需要至少一个文件路径');
     await this.send('Page.setInterceptFileChooserDialog', { enabled: true });
     const chooserPromise = new Promise((resolve) => {
       this.once('Page.fileChooserOpened', (params) => resolve(params));
@@ -445,9 +448,45 @@ class CDPClient {
       throw new Error(`文件选择框未弹出: ${selector}`);
     }
     const { backendNodeId, frameId } = params;
-    await this.send('DOM.setFileInputFiles', { files: [filePath], backendNodeId, frameId });
+    await this.send('DOM.setFileInputFiles', { files: paths, backendNodeId, frameId });
     await this.send('Page.setInterceptFileChooserDialog', { enabled: false });
     return true;
+  }
+
+  /**
+   * 设置小红书定时发布。
+   * @param {string} dateTimeStr 格式 'YYYY-MM-DD HH:mm'（如 2026-08-10 09:00）
+   */
+  async setTimedPublish(dateTimeStr) {
+    // 确保「更多设置」展开（定时发布开关在折叠面板内）
+    const isExpanded = await this.evaluateFn(() => {
+      const el = document.querySelector('.publish-page-content-settings');
+      return !!(el && el.clientHeight > 0);
+    });
+    if (!isExpanded) {
+      await this.clickByText('更多设置', { exact: false, maxRetries: 3 });
+      await sleep(400);
+    }
+    // 打开定时发布开关
+    await this.clickBySelector('.post-time-wrapper .d-switch.d-clickable', { maxRetries: 5 });
+    await sleep(800);
+    // 输入日期时间
+    const sel = '.post-time-wrapper .d-datepicker-input-filter input.d-text';
+    await this.evaluateFn((s) => {
+      const el = document.querySelector(s);
+      if (el) { el.focus(); el.select(); }
+    }, sel);
+    await sleep(200);
+    await this.typeText(dateTimeStr);
+    await sleep(300);
+    await this.pressEnter();
+    await sleep(400);
+    // 失焦让组件接受值
+    await this.evaluateFn(() => {
+      const ed = document.querySelector('.tiptap.ProseMirror') || document.body;
+      if (ed) ed.focus();
+    });
+    await sleep(300);
   }
 
   // ---------- 收尾 ----------
