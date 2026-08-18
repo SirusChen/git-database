@@ -1,0 +1,443 @@
+{
+  "version": "1.0.0",
+  "source": "GitHub SirusChen/git-database@sound-assets via jsDelivr",
+  "categories": [
+    {
+      "id": "animals",
+      "name": "动物",
+      "emoji": "🐾"
+    },
+    {
+      "id": "funny",
+      "name": "搞怪",
+      "emoji": "🎭"
+    },
+    {
+      "id": "game",
+      "name": "游戏",
+      "emoji": "🎮"
+    },
+    {
+      "id": "happy",
+      "name": "欢快",
+      "emoji": "🎉"
+    },
+    {
+      "id": "instruments",
+      "name": "乐器",
+      "emoji": "🎵"
+    },
+    {
+      "id": "nature",
+      "name": "自然",
+      "emoji": "🌿"
+    },
+    {
+      "id": "weird",
+      "name": "奇怪",
+      "emoji": "👻"
+    }
+  ],
+  "sounds": [
+    {
+      "id": "cat-meow",
+      "emoji": "🐱",
+      "label": "喵喵",
+      "category": "animals",
+      "url": "animals/cat-meow.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "cow-moo",
+      "emoji": "🐮",
+      "label": "哞哞",
+      "category": "animals",
+      "url": "animals/cow-moo.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "dog-bark",
+      "emoji": "🐶",
+      "label": "汪汪",
+      "category": "animals",
+      "url": "animals/dog-bark.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "duck",
+      "emoji": "🦆",
+      "label": "嘎嘎",
+      "category": "animals",
+      "url": "animals/duck.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "frog",
+      "emoji": "🐸",
+      "label": "呱呱",
+      "category": "animals",
+      "url": "animals/frog.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "horse",
+      "emoji": "🐴",
+      "label": "咴咴",
+      "category": "animals",
+      "url": "animals/horse.mp3",
+      "color": "green"
+    },
+    {
+      "id": "pig",
+      "emoji": "🐷",
+      "label": "哼哼",
+      "category": "animals",
+      "url": "animals/pig.mp3",
+      "color": "red"
+    },
+    {
+      "id": "rooster",
+      "emoji": "🐓",
+      "label": "喔喔",
+      "category": "animals",
+      "url": "animals/rooster.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "sheep",
+      "emoji": "🐑",
+      "label": "咩咩",
+      "category": "animals",
+      "url": "animals/sheep.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "boing",
+      "emoji": "🔵",
+      "label": "弹跳",
+      "category": "funny",
+      "url": "funny/boing.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "bruh",
+      "emoji": "🤨",
+      "label": "布鲁",
+      "category": "funny",
+      "url": "funny/bruh.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "cartoon-fall",
+      "emoji": "💥",
+      "label": "摔倒",
+      "category": "funny",
+      "url": "funny/cartoon-fall.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "evil-laugh",
+      "emoji": "😈",
+      "label": "坏笑",
+      "category": "funny",
+      "url": "funny/evil-laugh.mp3",
+      "color": "green"
+    },
+    {
+      "id": "fart-long",
+      "emoji": "💨",
+      "label": "长屁",
+      "category": "funny",
+      "url": "funny/fart-long.mp3",
+      "color": "red"
+    },
+    {
+      "id": "fart-short",
+      "emoji": "💨",
+      "label": "短屁",
+      "category": "funny",
+      "url": "funny/fart-short.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "laugh",
+      "emoji": "😂",
+      "label": "大笑",
+      "category": "funny",
+      "url": "funny/laugh.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "pop",
+      "emoji": "🫧",
+      "label": "啵",
+      "category": "funny",
+      "url": "funny/pop.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "scream",
+      "emoji": "😱",
+      "label": "尖叫",
+      "category": "funny",
+      "url": "funny/scream.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "trombone",
+      "emoji": "🎺",
+      "label": "长号",
+      "category": "funny",
+      "url": "funny/trombone.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "whistle",
+      "emoji": "📢",
+      "label": "口哨",
+      "category": "funny",
+      "url": "funny/whistle.mp3",
+      "color": "green"
+    },
+    {
+      "id": "wow",
+      "emoji": "😲",
+      "label": "哇哦",
+      "category": "funny",
+      "url": "funny/wow.mp3",
+      "color": "red"
+    },
+    {
+      "id": "cashier",
+      "emoji": "💰",
+      "label": "收银",
+      "category": "game",
+      "url": "game/cashier.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "coin",
+      "emoji": "🪙",
+      "label": "金币",
+      "category": "game",
+      "url": "game/coin.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "notification",
+      "emoji": "🔔",
+      "label": "通知",
+      "category": "game",
+      "url": "game/notification.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "tap",
+      "emoji": "👆",
+      "label": "点击",
+      "category": "game",
+      "url": "game/tap.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "victory",
+      "emoji": "🏆",
+      "label": "胜利",
+      "category": "game",
+      "url": "game/victory.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "air-horn",
+      "emoji": "📣",
+      "label": "汽笛",
+      "category": "happy",
+      "url": "happy/air-horn.mp3",
+      "color": "green"
+    },
+    {
+      "id": "applause",
+      "emoji": "👏",
+      "label": "鼓掌",
+      "category": "happy",
+      "url": "happy/applause.mp3",
+      "color": "red"
+    },
+    {
+      "id": "drum-roll",
+      "emoji": "🥁",
+      "label": "鼓点",
+      "category": "happy",
+      "url": "happy/drum-roll.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "hallelujah",
+      "emoji": "🎉",
+      "label": "欢呼",
+      "category": "happy",
+      "url": "happy/hallelujah.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "winning",
+      "emoji": "🏅",
+      "label": "夺冠",
+      "category": "happy",
+      "url": "happy/winning.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "yeah",
+      "emoji": "🙌",
+      "label": "耶",
+      "category": "happy",
+      "url": "happy/yeah.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "yeet",
+      "emoji": "🚀",
+      "label": "起飞",
+      "category": "happy",
+      "url": "happy/yeet.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "bass",
+      "emoji": "🎸",
+      "label": "贝斯",
+      "category": "instruments",
+      "url": "instruments/bass.mp3",
+      "color": "green"
+    },
+    {
+      "id": "drum",
+      "emoji": "🥁",
+      "label": "鼓",
+      "category": "instruments",
+      "url": "instruments/drum.mp3",
+      "color": "red"
+    },
+    {
+      "id": "guitar",
+      "emoji": "🎸",
+      "label": "吉他",
+      "category": "instruments",
+      "url": "instruments/guitar.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "harp",
+      "emoji": "🎵",
+      "label": "竖琴",
+      "category": "instruments",
+      "url": "instruments/harp.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "piano",
+      "emoji": "🎹",
+      "label": "钢琴",
+      "category": "instruments",
+      "url": "instruments/piano.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "birds",
+      "emoji": "🐦",
+      "label": "鸟鸣",
+      "category": "nature",
+      "url": "nature/birds.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "ocean",
+      "emoji": "🌊",
+      "label": "海浪",
+      "category": "nature",
+      "url": "nature/ocean.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "rain",
+      "emoji": "🌧️",
+      "label": "雨声",
+      "category": "nature",
+      "url": "nature/rain.mp3",
+      "color": "green"
+    },
+    {
+      "id": "thunder",
+      "emoji": "⚡",
+      "label": "雷声",
+      "category": "nature",
+      "url": "nature/thunder.mp3",
+      "color": "red"
+    },
+    {
+      "id": "wind",
+      "emoji": "💨",
+      "label": "风声",
+      "category": "nature",
+      "url": "nature/wind.mp3",
+      "color": "pink"
+    },
+    {
+      "id": "baby-cry",
+      "emoji": "👶",
+      "label": "婴儿哭",
+      "category": "weird",
+      "url": "weird/baby-cry.mp3",
+      "color": "teal"
+    },
+    {
+      "id": "buzzer",
+      "emoji": "🔔",
+      "label": "蜂鸣",
+      "category": "weird",
+      "url": "weird/buzzer.mp3",
+      "color": "amber"
+    },
+    {
+      "id": "confused",
+      "emoji": "😕",
+      "label": "懵了",
+      "category": "weird",
+      "url": "weird/confused.mp3",
+      "color": "purple"
+    },
+    {
+      "id": "crickets",
+      "emoji": "🦗",
+      "label": "蟋蟀",
+      "category": "weird",
+      "url": "weird/crickets.mp3",
+      "color": "blue"
+    },
+    {
+      "id": "nope",
+      "emoji": "🙅",
+      "label": "拒绝",
+      "category": "weird",
+      "url": "weird/nope.mp3",
+      "color": "green"
+    },
+    {
+      "id": "shock",
+      "emoji": "😲",
+      "label": "震惊",
+      "category": "weird",
+      "url": "weird/shock.mp3",
+      "color": "red"
+    },
+    {
+      "id": "toilet",
+      "emoji": "🚽",
+      "label": "冲水",
+      "category": "weird",
+      "url": "weird/toilet.mp3",
+      "color": "pink"
+    }
+  ]
+}

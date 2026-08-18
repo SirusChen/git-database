@@ -45,7 +45,7 @@
     "disableSWC": true
   },
   "appid": "wx9992e11e6ee347ea",
-  "projectname": "quickstart-wx-cloud",
+  "projectname": "sound-master",
   "libVersion": "2.20.1",
   "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
   "condition": {
@@ -62,13 +62,7 @@
       "list": []
     },
     "miniprogram": {
-      "list": [
-        {
-          "id": -1,
-          "name": "db guide",
-          "pathName": "pages/databaseGuide/databaseGuide"
-        }
-      ]
+      "list": []
     }
   },
   "compileType": "miniprogram",

@@ -1,6 +1,6 @@
 {
-  "navigationBarTitleText": "基础能力",
-  "usingComponents": {
-    "cloud-tip-modal": "/components/cloudTipModal/index"
-  }
+  "navigationBarTitleText": "来一声",
+  "usingComponents": {},
+  "enableShareAppMessage": true,
+  "enableShareTimeline": true
 }

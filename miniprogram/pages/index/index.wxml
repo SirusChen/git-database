@@ -1,29 +1,39 @@
-<!--index.wxml-->
-<view class="container">
-  <view class="title">快速了解云开发</view>
-  <view class="top_tip">免鉴权接口调用 免部署后台 高并发</view>
-  <view class="power" wx:key="title" wx:for="{{powerList}}" wx:for-item="power">
-    <view class="power_info" data-index="{{index}}" data-type="{{ power.type }}" bindtap="onClickPowerInfo">
-      <view class="power_info_text">
-        <view class="power_info_text_title">
-          {{power.title}}
-          <view class="power_info_text_tag" wx:if="{{power.tag}}">{{power.tag}}</view>
-        </view>
-        <view class="power_info_text_tip">{{power.tip}}</view>
-      </view>
-      <image wx:if="{{!power.showItem && power.item.length}}" class="power_info_more" src="../../images/arrow.svg"></image>
-      <image wx:if="{{power.showItem && power.item.length}}" class="power_info_less" src="../../images/arrow.svg"></image>
-      <image wx:if="{{!power.item.length}}" class="power_item_icon" src="../../images/arrow.svg"></image>
-    </view>
-    <view wx:if="{{power.showItem}}">
-      <view wx:key="title" wx:for="{{power.item}}">
-        <view class="line"></view>
-        <view class="power_item" bindtap="jumpPage" data-type="{{ item.type }}" data-page="{{item.page}}">
-          <view class="power_item_title">{{item.title}}</view>
-          <image class="power_item_icon" src="../../images/arrow.svg"></image>
-        </view>
-      </view>
+<!--pages/index/index.wxml-->
+<view class="page">
+  <!-- 头部 -->
+  <view class="header">
+    <text class="header__title">来一声 ✨</text>
+    <text class="header__sub">点一下，听一下</text>
+  </view>
+
+  <!-- 分类标签 -->
+  <scroll-view scroll-x class="tabs" enhanced show-scrollbar="{{false}}">
+    <view
+      wx:for="{{categories}}"
+      wx:key="id"
+      class="tab {{activeCategory === item.id ? 'tab--active' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onSwitchCategory"
+    >{{item.emoji}} {{item.name}}</view>
+  </scroll-view>
+
+  <!-- emoji 按钮网格 -->
+  <view class="grid">
+    <view
+      wx:for="{{filtered}}"
+      wx:key="id"
+      class="btn btn--{{item.color}} {{currentId === item.id ? 'btn--playing' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onTapSound"
+    >
+      <text class="btn__emoji">{{item.emoji}}</text>
+      <text class="btn__label">{{item.label}}</text>
+      <view wx:if="{{currentId === item.id}}" class="btn__pulse"></view>
     </view>
   </view>
-  <cloud-tip-modal showTipProps="{{showTip}}" title="{{title}}" content="{{content}}"></cloud-tip-modal>
+
+  <!-- 底部提示 -->
+  <view class="footer">
+    <text class="footer__text">长按按钮可收藏 · 共 {{sounds.length}} 个声音</text>
+  </view>
 </view>

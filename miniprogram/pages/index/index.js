@@ -1,185 +1,141 @@
-// index.js
+// pages/index/index.js
+const audio = require("../../utils/audio.js");
+const cdn = require("../../config/cdn.js");
+const localSounds = require("../../config/sounds.js");
+
 Page({
   data: {
-    showTip: false,
-    powerList: [
-      {
-        title: "云托管",
-        tip: "不限语言的全托管容器服务",
-        showItem: false,
-        item: [
-          {
-            type: "cloudbaserun",
-            title: "云托管调用",
-          },
-        ],
-      },
-      {
-        title: "云函数",
-        tip: "安全、免鉴权运行业务代码",
-        showItem: false,
-        item: [
-          {
-            type: "getOpenId",
-            title: "获取OpenId",
-          },
-          {
-            type: "getMiniProgramCode",
-            title: "生成小程序码",
-          },
-        ],
-      },
-      {
-        title: "数据库",
-        tip: "安全稳定的文档型数据库",
-        showItem: false,
-        item: [
-          {
-            type: "createCollection",
-            title: "创建集合",
-          },
-          {
-            type: "selectRecord",
-            title: "增删改查记录",
-          },
-          // {
-          //   title: '聚合操作',
-          //   page: 'sumRecord',
-          // },
-        ],
-      },
-      {
-        title: "云存储",
-        tip: "自带CDN加速文件存储",
-        showItem: false,
-        item: [
-          {
-            type: "uploadFile",
-            title: "上传文件",
-          },
-        ],
-      },
-      {
-        title: "AI 接入能力",
-        tip: "云开发 AI 接入能力",
-        showItem: false,
-        item: [
-          {
-            type: "model-guide",
-            title: "大模型对话指引",
-          },
-        ],
-      },
-      {
-        title: "AI 智能开发小程序",
-        tip: "连接 AI 开发工具与 MCP 开发小程序",
-        type: "ai-assistant",
-        skipEnvCheck: true,
-        showItem: false,
-        item: [],
-      },
-    ],
-    haveCreateCollection: false,
-    title: "",
-    content: "",
+    sounds: [],
+    filtered: [],
+    categories: [],
+    activeCategory: "all",
+    currentId: null,
+    loading: true,
   },
-  onClickPowerInfo(e) {
-    const app = getApp();
-    const index = e.currentTarget.dataset.index;
-    const powerList = this.data.powerList;
-    const selectedItem = powerList[index];
-    
-    // 检查是否跳过环境配置检测
-    if (!selectedItem.skipEnvCheck && !app.globalData.env) {
-      wx.showModal({
-        title: "提示",
-        content: "请在 `miniprogram/app.js` 中正确配置 `env` 参数",
-      });
+
+  onLoad(options) {
+    // 分享回流：带 soundId 自动播放（Day 2 接入分享时启用）
+    this._shareSoundId = options.soundId || "";
+
+    // 注册音频状态回调，同步播放态高亮
+    audio.onStateChange((playing, soundId) => {
+      this.setData({ currentId: playing ? soundId : null });
+    });
+
+    // 1. 先用本地兜底配置立即渲染
+    this._applySounds(localSounds);
+
+    // 2. 异步拉 CDN 配置热更新
+    this._fetchRemoteSounds();
+  },
+
+  onUnload() {
+    audio.stop();
+  },
+
+  onHide() {
+    audio.stop();
+  },
+
+  // 拉取 CDN 上的 sounds.json，带本地缓存
+  _fetchRemoteSounds() {
+    // 本地配置已渲染；开发模式或远程清单未就绪时跳过远程请求
+    if (cdn.IS_DEV || !cdn.REMOTE_SOUNDS_ENABLED) {
+      this.setData({ loading: false });
+      this._tryAutoPlay();
       return;
     }
-    if (selectedItem.link) {
-      wx.navigateTo({
-        url: `../web/index?url=${selectedItem.link}&title=${selectedItem.title}`,
-      });
-    } else if (selectedItem.type) {
-      wx.navigateTo({
-        url: `/pages/example/index?envId=${this.data.selectedEnv?.envId}&type=${selectedItem.type}`,
-      });
-    } else if (selectedItem.page) {
-      wx.navigateTo({
-        url: `/pages/${selectedItem.page}/index`,
-      });
-    } else if (
-      selectedItem.title === "数据库" &&
-      !this.data.haveCreateCollection
-    ) {
-      this.onClickDatabase(powerList, selectedItem);
-    } else {
-      selectedItem.showItem = !selectedItem.showItem;
-      this.setData({
-        powerList,
-      });
-    }
-  },
 
-  jumpPage(e) {
-    const { type, page } = e.currentTarget.dataset;
-    console.log("jump page", type, page);
-    if (type) {
-      wx.navigateTo({
-        url: `/pages/example/index?envId=${this.data.selectedEnv?.envId}&type=${type}`,
-      });
-    } else {
-      wx.navigateTo({
-        url: `/pages/${page}/index?envId=${this.data.selectedEnv?.envId}`,
-      });
-    }
-  },
+    const cached = wx.getStorageSync("sounds_json");
+    const expire = wx.getStorageSync("sounds_json_expire") || 0;
 
-  onClickDatabase(powerList, selectedItem) {
-    wx.showLoading({
-      title: "",
+    if (cached && Date.now() < expire) {
+      this._applySounds(cached);
+      this._tryAutoPlay();
+      return;
+    }
+
+    wx.request({
+      url: cdn.SOUNDS_JSON,
+      success: (res) => {
+        if (res.statusCode === 200 && res.data && res.data.sounds) {
+          this._applySounds(res.data);
+          wx.setStorageSync("sounds_json", res.data);
+          wx.setStorageSync("sounds_json_expire", Date.now() + cdn.CACHE_TTL);
+        }
+      },
+      fail: (err) => {
+        console.warn("[index] CDN sounds.json 不可达，使用本地配置", err);
+      },
+      complete: () => {
+        this.setData({ loading: false });
+        this._tryAutoPlay();
+      },
     });
-    wx.cloud
-      .callFunction({
-        name: "quickstartFunctions",
-        data: {
-          type: "createCollection",
-        },
-      })
-      .then((resp) => {
-        if (resp.result.success) {
-          this.setData({
-            haveCreateCollection: true,
-          });
-        }
-        selectedItem.showItem = !selectedItem.showItem;
-        this.setData({
-          powerList,
-        });
-        wx.hideLoading();
-      })
-      .catch((e) => {
-        wx.hideLoading();
-        const { errCode, errMsg } = e;
-        if (errMsg.includes("Environment not found")) {
-          this.setData({
-            showTip: true,
-            title: "云开发环境未找到",
-            content:
-              "如果已经开通云开发，请检查环境ID与 `miniprogram/app.js` 中的 `env` 参数是否一致。",
-          });
-          return;
-        }
-        if (errMsg.includes("FunctionName parameter could not be found")) {
-          this.setData({
-            showTip: true,
-            title: "请上传云函数",
-            content:
-              "在'cloudfunctions/quickstartFunctions'目录右键，选择【上传并部署-云端安装依赖】，等待云函数上传完成后重试。",
-          });
-          return;
-        }
-      });
+  },
+
+  _applySounds(data) {
+    const categories = [{ id: "all", name: "全部", emoji: "✨" }].concat(
+      data.categories || []
+    );
+    this.setData({
+      sounds: data.sounds || [],
+      filtered: data.sounds || [],
+      categories,
+    });
+  },
+
+  _tryAutoPlay() {
+    if (!this._shareSoundId) return;
+    const target = this.data.sounds.find((s) => s.id === this._shareSoundId);
+    if (target) {
+      setTimeout(() => this.onTapSound(target), 300);
+    }
+  },
+
+  onTapSound(e) {
+    let sound;
+    if (e && e.id) {
+      sound = e; // 直接传对象
+    } else if (e && e.currentTarget) {
+      const id = e.currentTarget.dataset.id;
+      sound = this.data.sounds.find((s) => s.id === id);
+    }
+    if (!sound) return;
+
+    const { playing } = audio.play(sound);
+    this.setData({ currentId: playing ? sound.id : null });
+
+    // 轻震动反馈（增强点击感）
+    if (playing) wx.vibrateShort({ type: "light" });
+  },
+
+  onSwitchCategory(e) {
+    const id = e.currentTarget.dataset.id;
+    const filtered =
+      id === "all"
+        ? this.data.sounds
+        : this.data.sounds.filter((s) => s.category === id);
+    this.setData({ activeCategory: id, filtered });
+  },
+
+  // 分享给朋友（Day 2 完善标题与封面）
+  onShareAppMessage() {
+    const s = this.data.sounds.find((x) => x.id === this.data.currentId);
+    return {
+      title: `来听这个「${s ? s.label : "来一声"}」${s ? s.emoji : "✨"}`,
+      path: `/pages/index/index?soundId=${s ? s.id : ""}`,
+      imageUrl: s ? cdn.resolveShareImg(s.id) : "",
+    };
+  },
+
+  // 分享到朋友圈
+  onShareTimeline() {
+    const s = this.data.sounds.find((x) => x.id === this.data.currentId);
+    return {
+      title: `来听这个「${s ? s.label : "来一声"}」${s ? s.emoji : "✨"}`,
+      query: `soundId=${s ? s.id : ""}`,
+      imageUrl: s ? cdn.resolveShareImg(s.id) : "",
+    };
   },
 });
