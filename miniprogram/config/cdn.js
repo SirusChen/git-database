@@ -1,65 +1,25 @@
-// config/cdn.js
-// CDN 配置中心
+// config/cdn.js —— 本地分包模式
 //
-// 当前方案：用 git 仓库做 CDN
-// GitHub 仓库 SirusChen/git-database 的 sound-assets 分支，经 jsDelivr 提供
-// 静态音频文件服务，无需自建服务器、无需付费。
+// 本小程序音频全部打包进本地分包 miniprogram/subpackages/audioN，
+// 通过 wx.loadSubPackage 按需加载（见 utils/audio.js），
+// 无需任何服务器 / 域名 / ICP 备案 / 白名单，提审零额外成本。
 //
-// jsDelivr URL 格式：https://cdn.jsdelivr.net/gh/USER/REPO@BRANCH/path
-// 例：https://cdn.jsdelivr.net/gh/SirusChen/git-database@sound-assets/animals/dog-bark.mp3
-//
-// 微信小程序注意：后台「开发管理 - 服务器域名」需把 cdn.jsdelivr.net
-// 加入 downloadFile 合法域名（InnerAudioContext 走此通道）。
-// 开发者工具可临时勾选「不校验合法域名」。
-//
-// 国内访问不稳定时改用镜像域名之一：
-//   fastly.jsdelivr.net / gcore.jsdelivr.net / testingcf.jsdelivr.net
+// 分享封面图：本地分包方案暂未生成封面，resolveShareImg 返回空，
+// 分享卡片走微信默认样式。
 
-const CDN_BASE = "https://cdn.jsdelivr.net/gh/SirusChen/git-database@sound-assets";
-
-// 是否开发模式（占位 CDN 时 true，跳过远程请求）
-// 现在 CDN 真实可用，IS_DEV 自动为 false
-const IS_DEV = CDN_BASE.includes("example.com");
-
-// 是否启用远程 sounds.json 热更新（需把 config/sounds.json 传到 sound-assets 根目录）
-// 当前远程尚未部署 sounds.json，故为 false，首页使用本地打包配置
+// 是否启用远程 sounds.json 热更新（本地分包方案下关闭）
 const REMOTE_SOUNDS_ENABLED = false;
 
 module.exports = {
-  CDN_BASE: CDN_BASE,
+  REMOTE_SOUNDS_ENABLED,
 
-  IS_DEV: IS_DEV,
-  REMOTE_SOUNDS_ENABLED: REMOTE_SOUNDS_ENABLED,
-
-  // 远程声音配置清单（部署到 sound-assets 根目录后启用热更新）
-  SOUNDS_JSON: `${CDN_BASE}/sounds.json`,
-
-  // 音频文件根目录
-  SOUND_DIR: `${CDN_BASE}`,
-
-  // 分享封面图目录
-  SHARE_DIR: `${CDN_BASE}/share`,
-
-  // 本地缓存过期时间（毫秒）—— 6 小时
-  CACHE_TTL: 6 * 60 * 60 * 1000,
-
-  // 拼接音频地址：
-  // - 完整 URL / cloud:// fileID 直接返回
-  // - / 开头为本地包内路径（如 /audio/dog.wav），直接返回
-  // - 其余相对路径拼 CDN_BASE
+  // 本地路径（以 / 开头）直接返回；完整 URL / cloud:// 也原样返回
   resolveUrl(path) {
-    if (!path) return "";
-    if (/^https?:\/\//.test(path) || /^cloud:\/\//.test(path)) {
-      return path;
-    }
-    if (path.charAt(0) === "/") {
-      return path;
-    }
-    return `${CDN_BASE}/${path}`;
+    return path || "";
   },
 
-  // 分享封面图地址
-  resolveShareImg(soundId) {
-    return `${CDN_BASE}/share/${soundId}.png`;
+  // 分享封面图：本地方案暂无封面
+  resolveShareImg() {
+    return "";
   },
 };

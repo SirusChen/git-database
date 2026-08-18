@@ -2,6 +2,11 @@
   "pages": [
     "pages/index/index"
   ],
+  "subpackages": [
+    { "root": "subpackages/audio1", "name": "audio1", "pages": ["pages/holder/holder"] },
+    { "root": "subpackages/audio2", "name": "audio2", "pages": ["pages/holder/holder"] },
+    { "root": "subpackages/audio3", "name": "audio3", "pages": ["pages/holder/holder"] }
+  ],
   "window": {
     "backgroundColor": "#FBEAF0",
     "backgroundTextStyle": "light",

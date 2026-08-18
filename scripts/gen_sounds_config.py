@@ -1,9 +1,14 @@
 """
-整理 sound-assets 音源生成 sounds.json。
-音源来自 GitHub: SirusChen/git-database@sound-assets（经 jsDelivr CDN 提供）
-每个音源映射到 emoji + 中文标签 + 分类，url 用相对路径由 cdn.js 拼 CDN_BASE。
+整理 sound-assets 音源，生成本地分包模式的声音配置 sounds.js。
 
-运行：
+本小程序采用「本地分包」方案：音频打包进 miniprogram/subpackages/audioN，
+无需 CDN / 域名 / 备案。每个音源映射到 emoji + 中文标签 + 分类 + 所属分包(pkg)，
+url 直接写本地绝对路径 /subpackages/<pkg>/<category>/<file>.mp3。
+
+注意：
+- 文件的实际落盘与体积均衡分包由 scripts/build_local_subpackages.js 完成，
+  本脚本只负责根据 PKG 映射重新生成 sounds.js（二者 PKG 必须保持一致）。
+- 运行：
   C:/Users/siruschen/.workbuddy/binaries/python/envs/default/Scripts/python.exe scripts/gen_sounds_config.py
 """
 import os
@@ -88,22 +93,31 @@ CATEGORIES = [
 
 COLORS = ["pink", "teal", "amber", "purple", "blue", "green", "red"]
 
+# 每个声音归属哪个音频分包（须与 scripts/build_local_subpackages.js 保持一致）
+PKG = {
+    "ocean": "audio1", "thunder": "audio1",
+    "wind": "audio2", "rain": "audio2", "drum": "audio2", "drum-roll": "audio2",
+    "evil-laugh": "audio2", "piano": "audio2", "air-horn": "audio2",
+}
+
 
 def main():
     sounds = []
     for i, (fid, emoji, label, cat) in enumerate(SOURCES):
+        pkg = PKG.get(fid, "audio3")
         sounds.append({
             "id": fid,
             "emoji": emoji,
             "label": label,
             "category": cat,
-            "url": f"{cat}/{fid}.mp3",
+            "url": f"/subpackages/{pkg}/{cat}/{fid}.mp3",
+            "pkg": pkg,
             "color": COLORS[i % len(COLORS)],
         })
 
     data = {
         "version": "1.0.0",
-        "source": "GitHub SirusChen/git-database@sound-assets via jsDelivr",
+        "source": "本地分包 (miniprogram/subpackages/audioN)",
         "categories": CATEGORIES,
         "sounds": sounds,
     }
@@ -122,7 +136,7 @@ def main():
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-    print(f"已生成 {len(sounds)} 个声音 → {js_path} (本地) / {json_path} (CDN)")
+    print(f"已生成 {len(sounds)} 个声音（本地分包模式）→ {js_path} (本地) / {json_path} (本地)")
     print("分类数:", len(CATEGORIES))
 
 

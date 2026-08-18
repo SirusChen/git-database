@@ -1,7 +1,7 @@
 // 本地声音配置（由 scripts/gen_sounds_config.py 生成，请勿手改）
 module.exports = {
   "version": "1.0.0",
-  "source": "GitHub SirusChen/git-database@sound-assets via jsDelivr",
+  "source": "本地分包 (miniprogram/subpackages/audioN)",
   "categories": [
     {
       "id": "animals",
@@ -45,7 +45,8 @@ module.exports = {
       "emoji": "🐱",
       "label": "喵喵",
       "category": "animals",
-      "url": "animals/cat-meow.mp3",
+      "url": "/subpackages/audio3/animals/cat-meow.mp3",
+      "pkg": "audio3",
       "color": "pink"
     },
     {
@@ -53,7 +54,8 @@ module.exports = {
       "emoji": "🐮",
       "label": "哞哞",
       "category": "animals",
-      "url": "animals/cow-moo.mp3",
+      "url": "/subpackages/audio3/animals/cow-moo.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -61,7 +63,8 @@ module.exports = {
       "emoji": "🐶",
       "label": "汪汪",
       "category": "animals",
-      "url": "animals/dog-bark.mp3",
+      "url": "/subpackages/audio3/animals/dog-bark.mp3",
+      "pkg": "audio3",
       "color": "amber"
     },
     {
@@ -69,7 +72,8 @@ module.exports = {
       "emoji": "🦆",
       "label": "嘎嘎",
       "category": "animals",
-      "url": "animals/duck.mp3",
+      "url": "/subpackages/audio3/animals/duck.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -77,7 +81,8 @@ module.exports = {
       "emoji": "🐸",
       "label": "呱呱",
       "category": "animals",
-      "url": "animals/frog.mp3",
+      "url": "/subpackages/audio3/animals/frog.mp3",
+      "pkg": "audio3",
       "color": "blue"
     },
     {
@@ -85,7 +90,8 @@ module.exports = {
       "emoji": "🐴",
       "label": "咴咴",
       "category": "animals",
-      "url": "animals/horse.mp3",
+      "url": "/subpackages/audio3/animals/horse.mp3",
+      "pkg": "audio3",
       "color": "green"
     },
     {
@@ -93,7 +99,8 @@ module.exports = {
       "emoji": "🐷",
       "label": "哼哼",
       "category": "animals",
-      "url": "animals/pig.mp3",
+      "url": "/subpackages/audio3/animals/pig.mp3",
+      "pkg": "audio3",
       "color": "red"
     },
     {
@@ -101,7 +108,8 @@ module.exports = {
       "emoji": "🐓",
       "label": "喔喔",
       "category": "animals",
-      "url": "animals/rooster.mp3",
+      "url": "/subpackages/audio3/animals/rooster.mp3",
+      "pkg": "audio3",
       "color": "pink"
     },
     {
@@ -109,7 +117,8 @@ module.exports = {
       "emoji": "🐑",
       "label": "咩咩",
       "category": "animals",
-      "url": "animals/sheep.mp3",
+      "url": "/subpackages/audio3/animals/sheep.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -117,7 +126,8 @@ module.exports = {
       "emoji": "🔵",
       "label": "弹跳",
       "category": "funny",
-      "url": "funny/boing.mp3",
+      "url": "/subpackages/audio3/funny/boing.mp3",
+      "pkg": "audio3",
       "color": "amber"
     },
     {
@@ -125,7 +135,8 @@ module.exports = {
       "emoji": "🤨",
       "label": "布鲁",
       "category": "funny",
-      "url": "funny/bruh.mp3",
+      "url": "/subpackages/audio3/funny/bruh.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -133,7 +144,8 @@ module.exports = {
       "emoji": "💥",
       "label": "摔倒",
       "category": "funny",
-      "url": "funny/cartoon-fall.mp3",
+      "url": "/subpackages/audio3/funny/cartoon-fall.mp3",
+      "pkg": "audio3",
       "color": "blue"
     },
     {
@@ -141,7 +153,8 @@ module.exports = {
       "emoji": "😈",
       "label": "坏笑",
       "category": "funny",
-      "url": "funny/evil-laugh.mp3",
+      "url": "/subpackages/audio2/funny/evil-laugh.mp3",
+      "pkg": "audio2",
       "color": "green"
     },
     {
@@ -149,7 +162,8 @@ module.exports = {
       "emoji": "💨",
       "label": "长屁",
       "category": "funny",
-      "url": "funny/fart-long.mp3",
+      "url": "/subpackages/audio3/funny/fart-long.mp3",
+      "pkg": "audio3",
       "color": "red"
     },
     {
@@ -157,7 +171,8 @@ module.exports = {
       "emoji": "💨",
       "label": "短屁",
       "category": "funny",
-      "url": "funny/fart-short.mp3",
+      "url": "/subpackages/audio3/funny/fart-short.mp3",
+      "pkg": "audio3",
       "color": "pink"
     },
     {
@@ -165,7 +180,8 @@ module.exports = {
       "emoji": "😂",
       "label": "大笑",
       "category": "funny",
-      "url": "funny/laugh.mp3",
+      "url": "/subpackages/audio3/funny/laugh.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -173,7 +189,8 @@ module.exports = {
       "emoji": "🫧",
       "label": "啵",
       "category": "funny",
-      "url": "funny/pop.mp3",
+      "url": "/subpackages/audio3/funny/pop.mp3",
+      "pkg": "audio3",
       "color": "amber"
     },
     {
@@ -181,7 +198,8 @@ module.exports = {
       "emoji": "😱",
       "label": "尖叫",
       "category": "funny",
-      "url": "funny/scream.mp3",
+      "url": "/subpackages/audio3/funny/scream.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -189,7 +207,8 @@ module.exports = {
       "emoji": "🎺",
       "label": "长号",
       "category": "funny",
-      "url": "funny/trombone.mp3",
+      "url": "/subpackages/audio3/funny/trombone.mp3",
+      "pkg": "audio3",
       "color": "blue"
     },
     {
@@ -197,7 +216,8 @@ module.exports = {
       "emoji": "📢",
       "label": "口哨",
       "category": "funny",
-      "url": "funny/whistle.mp3",
+      "url": "/subpackages/audio3/funny/whistle.mp3",
+      "pkg": "audio3",
       "color": "green"
     },
     {
@@ -205,7 +225,8 @@ module.exports = {
       "emoji": "😲",
       "label": "哇哦",
       "category": "funny",
-      "url": "funny/wow.mp3",
+      "url": "/subpackages/audio3/funny/wow.mp3",
+      "pkg": "audio3",
       "color": "red"
     },
     {
@@ -213,7 +234,8 @@ module.exports = {
       "emoji": "💰",
       "label": "收银",
       "category": "game",
-      "url": "game/cashier.mp3",
+      "url": "/subpackages/audio3/game/cashier.mp3",
+      "pkg": "audio3",
       "color": "pink"
     },
     {
@@ -221,7 +243,8 @@ module.exports = {
       "emoji": "🪙",
       "label": "金币",
       "category": "game",
-      "url": "game/coin.mp3",
+      "url": "/subpackages/audio3/game/coin.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -229,7 +252,8 @@ module.exports = {
       "emoji": "🔔",
       "label": "通知",
       "category": "game",
-      "url": "game/notification.mp3",
+      "url": "/subpackages/audio3/game/notification.mp3",
+      "pkg": "audio3",
       "color": "amber"
     },
     {
@@ -237,7 +261,8 @@ module.exports = {
       "emoji": "👆",
       "label": "点击",
       "category": "game",
-      "url": "game/tap.mp3",
+      "url": "/subpackages/audio3/game/tap.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -245,7 +270,8 @@ module.exports = {
       "emoji": "🏆",
       "label": "胜利",
       "category": "game",
-      "url": "game/victory.mp3",
+      "url": "/subpackages/audio3/game/victory.mp3",
+      "pkg": "audio3",
       "color": "blue"
     },
     {
@@ -253,7 +279,8 @@ module.exports = {
       "emoji": "📣",
       "label": "汽笛",
       "category": "happy",
-      "url": "happy/air-horn.mp3",
+      "url": "/subpackages/audio2/happy/air-horn.mp3",
+      "pkg": "audio2",
       "color": "green"
     },
     {
@@ -261,7 +288,8 @@ module.exports = {
       "emoji": "👏",
       "label": "鼓掌",
       "category": "happy",
-      "url": "happy/applause.mp3",
+      "url": "/subpackages/audio3/happy/applause.mp3",
+      "pkg": "audio3",
       "color": "red"
     },
     {
@@ -269,7 +297,8 @@ module.exports = {
       "emoji": "🥁",
       "label": "鼓点",
       "category": "happy",
-      "url": "happy/drum-roll.mp3",
+      "url": "/subpackages/audio2/happy/drum-roll.mp3",
+      "pkg": "audio2",
       "color": "pink"
     },
     {
@@ -277,7 +306,8 @@ module.exports = {
       "emoji": "🎉",
       "label": "欢呼",
       "category": "happy",
-      "url": "happy/hallelujah.mp3",
+      "url": "/subpackages/audio3/happy/hallelujah.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -285,7 +315,8 @@ module.exports = {
       "emoji": "🏅",
       "label": "夺冠",
       "category": "happy",
-      "url": "happy/winning.mp3",
+      "url": "/subpackages/audio3/happy/winning.mp3",
+      "pkg": "audio3",
       "color": "amber"
     },
     {
@@ -293,7 +324,8 @@ module.exports = {
       "emoji": "🙌",
       "label": "耶",
       "category": "happy",
-      "url": "happy/yeah.mp3",
+      "url": "/subpackages/audio3/happy/yeah.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -301,7 +333,8 @@ module.exports = {
       "emoji": "🚀",
       "label": "起飞",
       "category": "happy",
-      "url": "happy/yeet.mp3",
+      "url": "/subpackages/audio3/happy/yeet.mp3",
+      "pkg": "audio3",
       "color": "blue"
     },
     {
@@ -309,7 +342,8 @@ module.exports = {
       "emoji": "🎸",
       "label": "贝斯",
       "category": "instruments",
-      "url": "instruments/bass.mp3",
+      "url": "/subpackages/audio3/instruments/bass.mp3",
+      "pkg": "audio3",
       "color": "green"
     },
     {
@@ -317,7 +351,8 @@ module.exports = {
       "emoji": "🥁",
       "label": "鼓",
       "category": "instruments",
-      "url": "instruments/drum.mp3",
+      "url": "/subpackages/audio2/instruments/drum.mp3",
+      "pkg": "audio2",
       "color": "red"
     },
     {
@@ -325,7 +360,8 @@ module.exports = {
       "emoji": "🎸",
       "label": "吉他",
       "category": "instruments",
-      "url": "instruments/guitar.mp3",
+      "url": "/subpackages/audio3/instruments/guitar.mp3",
+      "pkg": "audio3",
       "color": "pink"
     },
     {
@@ -333,7 +369,8 @@ module.exports = {
       "emoji": "🎵",
       "label": "竖琴",
       "category": "instruments",
-      "url": "instruments/harp.mp3",
+      "url": "/subpackages/audio3/instruments/harp.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -341,7 +378,8 @@ module.exports = {
       "emoji": "🎹",
       "label": "钢琴",
       "category": "instruments",
-      "url": "instruments/piano.mp3",
+      "url": "/subpackages/audio2/instruments/piano.mp3",
+      "pkg": "audio2",
       "color": "amber"
     },
     {
@@ -349,7 +387,8 @@ module.exports = {
       "emoji": "🐦",
       "label": "鸟鸣",
       "category": "nature",
-      "url": "nature/birds.mp3",
+      "url": "/subpackages/audio3/nature/birds.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -357,7 +396,8 @@ module.exports = {
       "emoji": "🌊",
       "label": "海浪",
       "category": "nature",
-      "url": "nature/ocean.mp3",
+      "url": "/subpackages/audio1/nature/ocean.mp3",
+      "pkg": "audio1",
       "color": "blue"
     },
     {
@@ -365,7 +405,8 @@ module.exports = {
       "emoji": "🌧️",
       "label": "雨声",
       "category": "nature",
-      "url": "nature/rain.mp3",
+      "url": "/subpackages/audio2/nature/rain.mp3",
+      "pkg": "audio2",
       "color": "green"
     },
     {
@@ -373,7 +414,8 @@ module.exports = {
       "emoji": "⚡",
       "label": "雷声",
       "category": "nature",
-      "url": "nature/thunder.mp3",
+      "url": "/subpackages/audio1/nature/thunder.mp3",
+      "pkg": "audio1",
       "color": "red"
     },
     {
@@ -381,7 +423,8 @@ module.exports = {
       "emoji": "💨",
       "label": "风声",
       "category": "nature",
-      "url": "nature/wind.mp3",
+      "url": "/subpackages/audio2/nature/wind.mp3",
+      "pkg": "audio2",
       "color": "pink"
     },
     {
@@ -389,7 +432,8 @@ module.exports = {
       "emoji": "👶",
       "label": "婴儿哭",
       "category": "weird",
-      "url": "weird/baby-cry.mp3",
+      "url": "/subpackages/audio3/weird/baby-cry.mp3",
+      "pkg": "audio3",
       "color": "teal"
     },
     {
@@ -397,7 +441,8 @@ module.exports = {
       "emoji": "🔔",
       "label": "蜂鸣",
       "category": "weird",
-      "url": "weird/buzzer.mp3",
+      "url": "/subpackages/audio3/weird/buzzer.mp3",
+      "pkg": "audio3",
       "color": "amber"
     },
     {
@@ -405,7 +450,8 @@ module.exports = {
       "emoji": "😕",
       "label": "懵了",
       "category": "weird",
-      "url": "weird/confused.mp3",
+      "url": "/subpackages/audio3/weird/confused.mp3",
+      "pkg": "audio3",
       "color": "purple"
     },
     {
@@ -413,7 +459,8 @@ module.exports = {
       "emoji": "🦗",
       "label": "蟋蟀",
       "category": "weird",
-      "url": "weird/crickets.mp3",
+      "url": "/subpackages/audio3/weird/crickets.mp3",
+      "pkg": "audio3",
       "color": "blue"
     },
     {
@@ -421,7 +468,8 @@ module.exports = {
       "emoji": "🙅",
       "label": "拒绝",
       "category": "weird",
-      "url": "weird/nope.mp3",
+      "url": "/subpackages/audio3/weird/nope.mp3",
+      "pkg": "audio3",
       "color": "green"
     },
     {
@@ -429,7 +477,8 @@ module.exports = {
       "emoji": "😲",
       "label": "震惊",
       "category": "weird",
-      "url": "weird/shock.mp3",
+      "url": "/subpackages/audio3/weird/shock.mp3",
+      "pkg": "audio3",
       "color": "red"
     },
     {
@@ -437,7 +486,8 @@ module.exports = {
       "emoji": "🚽",
       "label": "冲水",
       "category": "weird",
-      "url": "weird/toilet.mp3",
+      "url": "/subpackages/audio3/weird/toilet.mp3",
+      "pkg": "audio3",
       "color": "pink"
     }
   ]
